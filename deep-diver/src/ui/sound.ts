@@ -162,109 +162,70 @@ export class SoundManager {
   // ───────────────────────────────────────────────────────── respiration
 
   /**
-   * Un souffle (inspiration ou expiration), façonné par filtrage de bruit.
-   * Inspiration : le filtre balaie vers l'aigu (l'air entre, le souffle
-   * « s'ouvre »), montée progressive. Expiration : balayage vers le grave.
+   * Un souffle réaliste synthétisé par bruit d'air filtré — AUCUNE voix.
+   * Deux filtres mobiles (corps grave + air) + une enveloppe douce et linéaire
+   * (sans clic). Inspiration : ouverture vers l'aigu, montée lente. Expiration :
+   * attaque plus franche puis relâchement vers le grave. Volumes calibrés pour
+   * rester sous le souffle retenu (qui, lui, vient du vrai enregistrement).
    */
-  private breath(opts: {
-    dur: number;
-    peak: number;
-    fStart: number;
-    fEnd: number;
-    attackRatio: number;
-    q?: number;
-  }): void {
+  private breath(opts: { dur: number; peak: number; kind: "inhale" | "exhale" }): void {
     if (!this.ctx || !this.master || !this.whiteBuf) return;
     const ctx = this.ctx;
     const t0 = ctx.currentTime;
+    const inhale = opts.kind === "inhale";
+
     const src = ctx.createBufferSource();
     src.buffer = this.whiteBuf;
     src.loop = true;
-    src.playbackRate.value = 0.85 + Math.random() * 0.3;
+    src.playbackRate.value = 0.92 + Math.random() * 0.16;
 
-    const bp = ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.Q.value = opts.q ?? 0.7;
-    bp.frequency.setValueAtTime(opts.fStart, t0);
-    bp.frequency.exponentialRampToValueAtTime(Math.max(40, opts.fEnd), t0 + opts.dur);
-
+    // Coupe le grondement (grave) et adoucit le sifflement (aigu).
     const hp = ctx.createBiquadFilter();
     hp.type = "highpass";
-    hp.frequency.value = 170;
+    hp.frequency.value = 240;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(inhale ? 1700 : 2600, t0);
+    lp.frequency.linearRampToValueAtTime(inhale ? 2900 : 1500, t0 + opts.dur);
 
-    // Formant « gorge/poitrine » : donne un grain plus corporel au souffle.
-    const formant = ctx.createBiquadFilter();
-    formant.type = "peaking";
-    formant.frequency.value = 850;
-    formant.Q.value = 1.1;
-    formant.gain.value = 6;
+    // Bande mobile : le mouvement spectral donne la sensation d'air qui circule.
+    const bp = ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 0.5;
+    bp.frequency.setValueAtTime(inhale ? 430 : 1000, t0);
+    bp.frequency.linearRampToValueAtTime(inhale ? 1050 : 360, t0 + opts.dur);
 
+    // Léger corps, sans résonance vocale marquée.
+    const body = ctx.createBiquadFilter();
+    body.type = "peaking";
+    body.frequency.value = 680;
+    body.Q.value = 0.9;
+    body.gain.value = 3.5;
+
+    // Enveloppe douce et linéaire (atteint exactement 0 → pas de clic).
     const g = ctx.createGain();
-    const peakAt = t0 + opts.dur * opts.attackRatio;
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(opts.peak, peakAt);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + opts.dur);
+    const attack = opts.dur * (inhale ? 0.62 : 0.22);
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(opts.peak, t0 + attack);
+    g.gain.linearRampToValueAtTime(0, t0 + opts.dur);
 
-    src.connect(bp).connect(hp).connect(formant).connect(g).connect(this.master);
+    src.connect(hp).connect(bp).connect(lp).connect(body).connect(g).connect(this.master);
     src.start(t0);
     src.stop(t0 + opts.dur + 0.05);
   }
 
-  /**
-   * Composante « voisée » (cordes vocales) façon « haaa » : superposée au
-   * souffle de bruit, elle le rend nettement plus humain. Volume volontairement
-   * faible (le souffle reste dominant).
-   */
-  private voiced(opts: { dur: number; f0: number; peak: number }): void {
-    if (!this.ctx || !this.master) return;
-    const ctx = this.ctx;
-    const t0 = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    osc.type = "sawtooth";
-    osc.frequency.setValueAtTime(opts.f0 * 0.95, t0);
-    osc.frequency.linearRampToValueAtTime(opts.f0 * 1.08, t0 + opts.dur);
-    // Deux formants → voyelle ouverte « ha ».
-    const f1 = ctx.createBiquadFilter();
-    f1.type = "bandpass";
-    f1.frequency.value = 720;
-    f1.Q.value = 4;
-    const f2 = ctx.createBiquadFilter();
-    f2.type = "bandpass";
-    f2.frequency.value = 1150;
-    f2.Q.value = 6;
-    const g = ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(opts.peak, t0 + opts.dur * 0.5);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + opts.dur);
-    // Léger vibrato : grain organique.
-    const vib = ctx.createOscillator();
-    vib.frequency.value = 5 + Math.random() * 2;
-    const vibG = ctx.createGain();
-    vibG.gain.value = opts.f0 * 0.02;
-    vib.connect(vibG).connect(osc.frequency);
-    osc.connect(f1).connect(g).connect(this.master);
-    osc.connect(f2).connect(g);
-    osc.start(t0);
-    vib.start(t0);
-    osc.stop(t0 + opts.dur + 0.05);
-    vib.stop(t0 + opts.dur + 0.05);
-  }
-
   private inhale(big = false): void {
-    // Échantillon réel si disponible, sinon synthèse + voix.
     if (this.playSample(big ? "final-inhale" : "inhale", big ? 0.9 : 0.7)) return;
     this.breath(
       big
-        ? { dur: 1.9, peak: 0.42, fStart: 240, fEnd: 1500, attackRatio: 0.82, q: 0.6 }
-        : { dur: 1.15, peak: 0.22, fStart: 340, fEnd: 1050, attackRatio: 0.72 },
+        ? { dur: 1.8, peak: 0.24, kind: "inhale" }
+        : { dur: 1.45, peak: 0.15, kind: "inhale" },
     );
-    this.voiced(big ? { dur: 1.6, f0: 145, peak: 0.07 } : { dur: 1.0, f0: 165, peak: 0.035 });
   }
 
   private exhale(): void {
     if (this.playSample("exhale", 0.6)) return;
-    this.breath({ dur: 1.0, peak: 0.16, fStart: 900, fEnd: 300, attackRatio: 0.18 });
-    this.voiced({ dur: 0.9, f0: 130, peak: 0.025 });
+    this.breath({ dur: 1.25, peak: 0.11, kind: "exhale" });
   }
 
   /**
@@ -275,17 +236,19 @@ export class SoundManager {
   startBreathing(remainingMs: number): void {
     if (!this.ctx) return;
     this.stopBreathing();
-    const big = Math.max(300, remainingMs - 1800); // début de la grande inspiration finale
-    // Respirations amples avant la grande inspiration.
-    let t = 150;
+    // Grande inspiration finale calée pour finir ~au départ de la plongée.
+    const big = Math.max(400, remainingMs - 1950);
+    // Avant : respiration calme et RÉGULIÈRE (inspiration / expiration), à
+    // cadence lente façon préparation d'apnéiste — pas de souffles précipités.
+    const cadence = 1950;
+    let t = 250;
     let isInhale = true;
-    while (t < big - 900) {
+    while (t < big - 1300) {
       const inhale = isInhale;
       this.breathTimers.push(setTimeout(() => (inhale ? this.inhale(false) : this.exhale()), t));
-      t += inhale ? 1250 : 1050;
+      t += cadence;
       isInhale = !isInhale;
     }
-    // La grande inspiration finale.
     this.breathTimers.push(setTimeout(() => this.inhale(true), big));
   }
 
@@ -508,8 +471,7 @@ export class SoundManager {
     if (!this.ctx) return;
     // Souffle de soulagement (on respire enfin) : échantillon réel ou synthèse.
     if (!this.playSample("relief", 0.8)) {
-      this.breath({ dur: 0.9, peak: 0.2, fStart: 700, fEnd: 1600, attackRatio: 0.25 });
-      this.voiced({ dur: 0.8, f0: 180, peak: 0.04 });
+      this.breath({ dur: 0.9, peak: 0.16, kind: "inhale" });
     }
     const notes = [523, 659, 784, 1047];
     notes.forEach((f, i) => {
@@ -531,8 +493,7 @@ export class SoundManager {
   crash(): void {
     // Expiration brutale et incontrôlée : échantillon réel ou synthèse.
     if (!this.playSample("gasp", 0.9)) {
-      this.breath({ dur: 0.7, peak: 0.32, fStart: 1100, fEnd: 220, attackRatio: 0.1, q: 0.5 });
-      this.voiced({ dur: 0.5, f0: 160, peak: 0.06 });
+      this.breath({ dur: 0.7, peak: 0.3, kind: "exhale" });
     }
     this.blip(320, 60, 0.6, "sawtooth", 0.16);
     this.blip(150, 40, 0.8, "sine", 0.2);
