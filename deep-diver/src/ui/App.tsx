@@ -86,8 +86,18 @@ export default function App() {
       for (const e of events) {
         switch (e.type) {
           case "phaseChanged":
-            if (e.phase === "DIVING") sound.startDive();
-            if (e.phase === "BETTING") sound.stopDive();
+            if (e.phase === "DIVING") {
+              // Sous l'eau : on retient son souffle (diaphragme + glotte).
+              sound.stopBreathing();
+              sound.startBreathHold();
+            }
+            if (e.phase === "BETTING") {
+              // Prise d'air : grandes inspirations jusqu'à la grande finale,
+              // calée pour culminer juste avant le départ de la plongée.
+              sound.stopBreathHold();
+              const remaining = engine.getSnapshot().bettingEndsAt - clock();
+              sound.startBreathing(remaining > 0 ? remaining : engine.config.bettingDurationMs);
+            }
             break;
           case "betPlaced":
             sound.betPlaced();
@@ -111,7 +121,8 @@ export default function App() {
             }
             break;
           case "crashed":
-            sound.stopDive();
+            sound.stopBreathHold();
+            sound.stopBreathing();
             sound.crash();
             setAnnouncement(`Syncope à ${formatMultiplier(e.crashPoint)}`);
             // Tour à multiplicateur « de dingue » : on le met en scène même si
@@ -152,11 +163,11 @@ export default function App() {
         }
       }
     });
-  }, [onEvents, pushToast, sound, celebrate]);
+  }, [onEvents, pushToast, sound, celebrate, engine, clock]);
 
-  // Tension sonore qui suit le multiplicateur.
+  // La tension du souffle retenu suit la profondeur (multiplicateur).
   useEffect(() => {
-    if (snapshot.phase === "DIVING") sound.updateDive(snapshot.multiplier);
+    if (snapshot.phase === "DIVING") sound.updateBreathHold(snapshot.multiplier);
   }, [snapshot.phase, snapshot.multiplier, sound]);
 
   const unlockAudio = useCallback(() => sound.ensure(), [sound]);
