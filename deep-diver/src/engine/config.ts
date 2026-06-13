@@ -25,7 +25,7 @@ export interface GameConfig {
   resultDurationMs: number;
   /** Mise minimale, en centimes de crédit. */
   minBetCents: number;
-  /** Mise maximale, en centimes de crédit. */
+  /** Mise maximale en centimes (MAX_SAFE_INTEGER = pas de plafond). */
   maxBetCents: number;
   /** Solde de départ (et de reset), en centimes de crédit. */
   startingBalanceCents: number;
@@ -47,7 +47,9 @@ export const DEFAULT_CONFIG: GameConfig = {
   crashDurationMs: 1_600,
   resultDurationMs: 3_500,
   minBetCents: 100, // 1 crédit
-  maxBetCents: 50_000, // 500 crédits
+  // Pas de plafond de mise : la seule limite réelle est le solde du joueur
+  // (on ne peut pas miser ce qu'on n'a pas). Valeur géante = jamais contraignante.
+  maxBetCents: Number.MAX_SAFE_INTEGER,
   startingBalanceCents: 100_000, // 1 000 crédits
   topUpCents: 100_000, // recharge « démo » : +1 000 crédits fictifs
   metersPerMultiplier: 10,

@@ -8,11 +8,16 @@ import {
   validateBet,
 } from "../wallet";
 
-const cfg = DEFAULT_CONFIG; // min 100, max 50 000 centimes
+const cfg = DEFAULT_CONFIG; // min 100, pas de plafond de mise
+const capped = { ...DEFAULT_CONFIG, maxBetCents: 50_000 }; // plafond explicite (option)
 
 describe("validateBet", () => {
   it("accepte une mise valide", () => {
     expect(validateBet(10_000, 500, cfg)).toEqual({ ok: true });
+  });
+  it("accepte une grosse mise tant qu'elle tient dans le solde (pas de plafond)", () => {
+    expect(validateBet(5_000_000, 5_000_000, cfg)).toEqual({ ok: true });
+    expect(validateBet(1_000_000_000, 999_999_999, cfg)).toEqual({ ok: true });
   });
   it("refuse de miser plus que le solde", () => {
     expect(validateBet(400, 500, cfg)).toEqual({
@@ -20,9 +25,11 @@ describe("validateBet", () => {
       reason: "insufficient",
     });
   });
-  it("refuse sous la mise minimale et au-dessus de la maximale", () => {
+  it("refuse sous la mise minimale", () => {
     expect(validateBet(10_000, 50, cfg)).toEqual({ ok: false, reason: "belowMin" });
-    expect(validateBet(1_000_000, 60_000, cfg)).toEqual({
+  });
+  it("respecte un plafond seulement s'il est configuré explicitement", () => {
+    expect(validateBet(1_000_000, 60_000, capped)).toEqual({
       ok: false,
       reason: "aboveMax",
     });
@@ -76,9 +83,12 @@ describe("debitBet / creditWin — le solde ne devient jamais négatif", () => {
 });
 
 describe("clampBet", () => {
-  it("borne au solde et au plafond", () => {
+  it("borne au solde (pas de plafond par défaut)", () => {
     expect(clampBet(999_999, 20_000, cfg)).toBe(20_000); // limité par le solde
-    expect(clampBet(999_999, 200_000, cfg)).toBe(50_000); // limité par le max
+    expect(clampBet(10_000_000, 5_000_000, cfg)).toBe(5_000_000); // gros solde, pas de plafond
     expect(clampBet(1, 20_000, cfg)).toBe(100); // remonté au min
+  });
+  it("borne au plafond seulement s'il est configuré", () => {
+    expect(clampBet(999_999, 200_000, capped)).toBe(50_000);
   });
 });
