@@ -27,6 +27,8 @@ export interface GameConfig {
   maxBetCents: number;
   /** Solde de départ (et de reset), en centimes de crédit. */
   startingBalanceCents: number;
+  /** Montant ajouté à chaque recharge « démo » de crédits fictifs. */
+  topUpCents: number;
   /** Conversion multiplicateur → profondeur : depth = (m − 1) × metersPerMultiplier. */
   metersPerMultiplier: number;
   /** Nombre de tours conservés dans l'historique. */
@@ -38,12 +40,13 @@ export interface GameConfig {
 export const DEFAULT_CONFIG: GameConfig = {
   houseEdge: 0.03,
   growthRateK: 0.14,
-  bettingDurationMs: 5_000,
+  bettingDurationMs: 8_000,
   crashDurationMs: 1_600,
-  resultDurationMs: 2_600,
+  resultDurationMs: 3_500,
   minBetCents: 100, // 1 crédit
   maxBetCents: 50_000, // 500 crédits
   startingBalanceCents: 100_000, // 1 000 crédits
+  topUpCents: 100_000, // recharge « démo » : +1 000 crédits fictifs
   metersPerMultiplier: 10,
   maxHistory: 50,
   minAutoCashout: 1.01,

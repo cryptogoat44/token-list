@@ -17,12 +17,21 @@ import { FairnessPanel } from "./components/FairnessPanel";
 import { HistoryBar } from "./components/HistoryBar";
 import { LiveBets } from "./components/LiveBets";
 import { StatsPanel } from "./components/StatsPanel";
-import { formatCredits, formatMultiplier } from "./format";
+import { StreamsPanel } from "./components/StreamsPanel";
+import { diveTier, formatCredits, formatMultiplier, type DiveTier } from "./format";
 import { DiveScene } from "./scene/DiveScene";
 import { SoundManager } from "./sound";
 import { readStoredMuted, storeMuted, useEngine } from "./useEngine";
 
-type SideTab = "live" | "stats" | "fair";
+type SideTab = "live" | "stats" | "fair" | "streams";
+
+interface Celebration {
+  id: number;
+  multiplier: number;
+  tier: DiveTier;
+  /** true = remontée gagnante du joueur ; false = gros tour (syncope haute). */
+  playerWin: boolean;
+}
 
 interface Toast {
   id: number;
@@ -47,6 +56,17 @@ export default function App() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [selectedRound, setSelectedRound] = useState<RoundHistoryEntry | null>(null);
   const [announcement, setAnnouncement] = useState("");
+  const [celebration, setCelebration] = useState<Celebration | null>(null);
+  const celebrationTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Déclenche une célébration plein écran pour un gros multiplicateur.
+  const celebrate = useCallback((multiplier: number, playerWin: boolean) => {
+    const tier = diveTier(multiplier);
+    if (!tier.celebrate) return;
+    setCelebration({ id: ++toastId, multiplier, tier, playerWin });
+    if (celebrationTimer.current) clearTimeout(celebrationTimer.current);
+    celebrationTimer.current = setTimeout(() => setCelebration(null), 4200);
+  }, []);
 
   // ── Faux joueurs en direct ────────────────────────────────────────────────
   const [bettors, setBettors] = useState<FakeBettor[]>(() => generateRoundBettors());
@@ -86,11 +106,29 @@ export default function App() {
             setAnnouncement(
               `Remontée réussie du panier ${e.slot + 1} à ${formatMultiplier(e.multiplier)}, gain ${formatCredits(e.winCents)} crédits`,
             );
+            // Le joueur encaisse gros : on fête sa remontée.
+            if (diveTier(e.multiplier).celebrate) {
+              sound.bigWin();
+              celebrate(e.multiplier, true);
+            }
             break;
           case "crashed":
             sound.stopDive();
             sound.crash();
             setAnnouncement(`Syncope à ${formatMultiplier(e.crashPoint)}`);
+            // Tour à multiplicateur « de dingue » : on le met en scène même si
+            // le joueur n'était pas dessus, pour donner envie de retenter.
+            if (diveTier(e.crashPoint).celebrate) {
+              sound.bigWin();
+              celebrate(e.crashPoint, false);
+            }
+            break;
+          case "creditsToppedUp":
+            sound.betPlaced();
+            pushToast(
+              `+${formatCredits(e.amountCents)} crédits fictifs rechargés 🪙`,
+              "win",
+            );
             break;
           case "betLost":
             pushToast(`Panier ${e.slot + 1} : mise perdue (−${formatCredits(e.betCents)})`, "info");
@@ -116,7 +154,7 @@ export default function App() {
         }
       }
     });
-  }, [onEvents, pushToast, sound]);
+  }, [onEvents, pushToast, sound, celebrate]);
 
   // Tension sonore qui suit le multiplicateur.
   useEffect(() => {
@@ -236,6 +274,19 @@ export default function App() {
             </div>
             <button
               type="button"
+              onClick={() => {
+                unlockAudio();
+                engine.topUp();
+              }}
+              aria-label={`Recharger ${formatCredits(engine.config.topUpCents)} crédits fictifs`}
+              className="flex items-center gap-1.5 rounded-xl border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-sm font-bold text-emerald-200 transition hover:bg-emerald-500/25 active:scale-95"
+            >
+              <span aria-hidden="true">🪙</span>
+              <span className="hidden sm:inline">Recharger</span>
+              <span className="font-mono">+{formatCredits(engine.config.topUpCents)}</span>
+            </button>
+            <button
+              type="button"
               onClick={toggleMute}
               aria-label={muted ? "Activer le son" : "Couper le son"}
               aria-pressed={muted}
@@ -267,6 +318,30 @@ export default function App() {
                   </p>
                 ))}
               </div>
+
+              {/* Célébration plein écran d'un gros multiplicateur */}
+              {celebration && (
+                <div
+                  key={celebration.id}
+                  className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+                  role="status"
+                >
+                  <div className="animate-[celebPop_0.4s_ease-out] rounded-2xl border border-amber-300/40 bg-slate-950/70 px-6 py-4 text-center shadow-[0_0_60px_-10px_rgba(251,191,36,0.7)] backdrop-blur-sm">
+                    <p className="text-4xl">{celebration.tier.emoji}</p>
+                    <p className="mt-1 bg-gradient-to-r from-amber-200 via-yellow-100 to-fuchsia-300 bg-clip-text font-mono text-5xl font-black text-transparent drop-shadow">
+                      {formatMultiplier(celebration.multiplier)}
+                    </p>
+                    <p className="mt-1 text-sm font-bold uppercase tracking-[0.2em] text-amber-200">
+                      {celebration.tier.label}
+                    </p>
+                    <p className="mt-0.5 text-xs text-cyan-200/80">
+                      {celebration.playerWin
+                        ? "Remontée spectaculaire ! 🎉"
+                        : "Quelle descente ! La prochaine est pour vous ?"}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -290,13 +365,15 @@ export default function App() {
           </div>
 
           <aside className="flex max-h-[860px] min-h-[420px] flex-col rounded-2xl border border-cyan-400/10 bg-slate-900/60 p-3 backdrop-blur">
-            <div role="tablist" aria-label="Panneaux d'information" className="mb-3 flex gap-1 rounded-xl bg-slate-950/60 p-1">
+            <div role="tablist" aria-label="Panneaux d'information" className="mb-3 grid grid-cols-4 gap-1 rounded-xl bg-slate-950/60 p-1">
               {tabButton("live", "En direct")}
+              {tabButton("streams", "Lives")}
               {tabButton("stats", "Stats")}
               {tabButton("fair", "Équité")}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto pr-0.5 [scrollbar-width:thin]">
               {tab === "live" && <LiveBets bettors={liveBettorViews} onlineCount={onlineCount} />}
+              {tab === "streams" && <StreamsPanel />}
               {tab === "stats" && (
                 <StatsPanel
                   stats={snapshot.stats}

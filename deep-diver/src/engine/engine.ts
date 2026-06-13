@@ -533,6 +533,25 @@ export class GameEngine {
     return { ok: true };
   }
 
+  /**
+   * Recharge de crédits FICTIFS (mode démo) : ajoute `amountCents` au solde
+   * sans toucher aux statistiques. Disponible à tout moment — c'est de la
+   * monnaie virtuelle sans aucune valeur réelle.
+   */
+  topUp(amountCents: number = this.config.topUpCents): ActionResult {
+    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      return { ok: false, reason: "invalidAmount" };
+    }
+    this.balanceCents = creditWin(this.balanceCents, amountCents);
+    this.pushEvent({
+      type: "creditsToppedUp",
+      amountCents,
+      balanceCents: this.balanceCents,
+    });
+    this.emitChange();
+    return { ok: true };
+  }
+
   // ──────────────────────────────────────────────────────────── statistiques
 
   private updateStreaks(roundNet: number): void {

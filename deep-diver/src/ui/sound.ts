@@ -114,6 +114,17 @@ export class SoundManager {
     });
   }
 
+  /** Fanfare festive : multiplicateur « de dingue » (≥ 10x). */
+  bigWin(): void {
+    if (!this.ctx) return;
+    // Arpège majeur sur deux octaves + une note tenue brillante.
+    const notes = [523, 659, 784, 1047, 1319, 1568, 2093];
+    notes.forEach((f, i) => {
+      setTimeout(() => this.blip(f, f * 1.01, 0.22, "triangle", 0.22), i * 65);
+    });
+    setTimeout(() => this.blip(2093, 2100, 0.7, "sine", 0.15), notes.length * 65);
+  }
+
   /** Syncope : chute grave + souffle. */
   crash(): void {
     this.blip(320, 60, 0.6, "sawtooth", 0.16);

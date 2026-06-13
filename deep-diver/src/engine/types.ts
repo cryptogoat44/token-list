@@ -105,7 +105,8 @@ export type EngineEvent =
   | { type: "betLost"; slot: 0 | 1; betCents: number }
   | { type: "crashed"; crashPoint: number }
   | { type: "autoBetStopped"; slot: 0 | 1; reason: "finished" | "balance" | "stopCondition" | "loss" | "manual" }
-  | { type: "walletReset" };
+  | { type: "walletReset" }
+  | { type: "creditsToppedUp"; amountCents: number; balanceCents: number };
 
 /** Instantané complet de l'état public du moteur, recalculé à chaque tick. */
 export interface EngineSnapshot {
