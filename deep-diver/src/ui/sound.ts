@@ -327,16 +327,28 @@ export class SoundManager {
     this.holdDroneOsc = sub;
 
     // Lit d'un vrai enregistrement de souffle retenu si disponible.
-    this.holdBedSrc = this.playSample("breath-hold", 0.5, true);
-
-    this.scheduleContraction();
+    this.holdBedSrc = this.playSample("breath-hold", 0.9, true);
+    if (this.holdBedSrc) {
+      // Le vrai souffle enregistré contient déjà le diaphragme et la glotte :
+      // on efface la synthèse des contractions et on réduit la nappe.
+      g.gain.setTargetAtTime(0.012, ctx.currentTime, 0.1);
+      subG.gain.setTargetAtTime(0.02, ctx.currentTime, 0.1);
+    } else {
+      this.scheduleContraction();
+    }
   }
 
   /** Tension croissante avec la profondeur (multiplicateur). */
   updateBreathHold(multiplier: number): void {
     this.holdMultiplier = multiplier;
-    if (this.holdDroneFilter && this.holdDroneOsc && this.ctx) {
-      const strain = this.strain();
+    if (!this.ctx) return;
+    const strain = this.strain();
+    // Avec le vrai souffle : on accélère légèrement (urgence) plutôt que de
+    // superposer une synthèse qui jurerait avec l'enregistrement.
+    if (this.holdBedSrc) {
+      this.holdBedSrc.playbackRate.setTargetAtTime(1 + strain * 0.16, this.ctx.currentTime, 0.5);
+    }
+    if (this.holdDroneFilter && this.holdDroneOsc) {
       this.holdDroneFilter.frequency.setTargetAtTime(130 + strain * 90, this.ctx.currentTime, 0.4);
       this.holdDroneOsc.frequency.setTargetAtTime(62 + strain * 22, this.ctx.currentTime, 0.4);
     }
