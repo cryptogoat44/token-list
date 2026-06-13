@@ -1,0 +1,57 @@
+# Construit l'application Deep Diver (deep-diver/) et la publie sur GitHub Pages.
+# Le site sera servi sur https://cryptogoat44.github.io/token-list/
+name: Deploy Deep Diver
+
+on:
+  # Se déclenche quand le code du jeu (ou ce workflow) change, sur la branche
+  # de développement comme sur main (après fusion de la PR).
+  push:
+    branches:
+      - main
+      - claude/exciting-cerf-3zt4cr
+    paths:
+      - "deep-diver/**"
+      - ".github/workflows/deploy-deep-diver.yml"
+  # Permet aussi de lancer le déploiement à la main depuis l'onglet Actions.
+  workflow_dispatch:
+
+# Droits requis par le déploiement Pages via Actions.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Un seul déploiement à la fois ; on annule les builds Pages en attente.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deep-diver
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # npm install (et non npm ci) : le dépôt ignore package-lock.json.
+      - run: npm install
+      - run: npm test --silent
+      - run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: deep-diver/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
