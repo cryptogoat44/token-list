@@ -41,11 +41,15 @@ Prérequis : Node ≥ 18 (Web Crypto API). Dans le navigateur, servir via
 Options : **remontée auto** (cash out automatique à un multiplicateur cible),
 **pari auto** (rejoue N tours, avec arrêt sur seuil de solde ou après une
 perte), historique coloré des tours, statistiques de session, flux de joueurs
-simulé (purement décoratif), sons d'ambiance (touche `M` pour couper).
+simulé, onglet **Lives** (liens Twitch/Kick), **célébrations** des gros
+multiplicateurs, sons d'ambiance (touche `M` pour couper).
+
+Bouton **🪙 Recharger** dans l'en-tête : ajoute 1 000 crédits fictifs à tout
+moment (sans effacer les stats), pratique en démo si on a tout perdu.
 
 Clavier : `Espace`/`1` = miser ou remonter (panier 1), `2` = panier 2,
-`M` = son. Le solde (1 000 crédits au départ) est persistant et
-réinitialisable depuis l'onglet **Stats**.
+`M` = son. Le solde (1 000 crédits au départ) est persistant ; l'onglet
+**Stats** permet une réinitialisation complète (solde + statistiques).
 
 ## La mécanique, en détail
 
@@ -84,10 +88,36 @@ Avec `houseEdge = 3 %` (RTP 97 %, configurable dans
 | 2x               | ≈ 48,5 %              |
 | 3x               | ≈ 32,3 %              |
 | 10x              | ≈ 9,7 %               |
+| 100x             | ≈ 0,97 % (~1/103)     |
+| 100 000x         | ≈ 0,00097 % (~1/103 000) |
 
 Les petits multiplicateurs sont fréquents, les gros exponentiellement rares,
 et `1 − 0.97/1.01 ≈ 3,96 %` des tours (≈ l'ordre de grandeur de l'avantage
 maison) « syncopent » instantanément à `1.00x`.
+
+C'est **exactement le modèle d'Aviator (Spribe)** : même RTP 97 %, même
+formule `P(crash ≥ m) = (1 − edge) / m`, et un multiplicateur **plafonné à
+1 000 000x** (`config.maxMultiplier`). Les multiplicateurs « de dingue »
+existent donc réellement mais sont astronomiquement rares — le plafond
+n'affecte que ~1 tour sur un million et ne change pas l'avantage maison de
+façon perceptible. Les gros tours sont mis en scène par des **célébrations**
+(paliers Grande plongée → Fosse des Marianes).
+
+### Mode lobby partagé (timeline synchronisée, sans serveur)
+
+Par défaut le site tourne en **lobby unique** : tous les joueurs voient les
+**mêmes tours, le même multiplicateur, au même instant**, sans aucun backend.
+Le temps est découpé en périodes d'une heure ; dans chaque période, les points
+de crash sont dérivés de façon déterministe d'une **graine publique** + l'index
+de période + l'index du tour (même SHA-256). Chaque navigateur lit l'horloge
+murale (UTC) et se place exactement sur le même tour que les autres
+(`src/engine/sharedWorld.ts`, `src/engine/schedule.ts`).
+
+Le solde, les paris et les statistiques restent **locaux** à chaque joueur ;
+seule la timeline est commune. L'équité devient « **déterministe et publique** »
+plutôt que commit-reveal : tout le monde peut recalculer n'importe quel tour à
+partir de la graine publique. Pour revenir au mode solo (commit-reveal avec
+`serverSeed` secret), il suffit de construire le moteur **sans** `sharedWorld`.
 
 Protocole commit-reveal, vérifiable dans l'onglet **Équité** :
 
@@ -106,22 +136,25 @@ deep-diver/
 ├── index.html, vite.config.ts, tsconfig.json
 └── src/
     ├── engine/                 ← moteur pur, testable, AUCUNE dépendance DOM
-    │   ├── config.ts             constantes (edge, k, durées, bornes de mise)
+    │   ├── config.ts             constantes (edge, max 1 000 000x, k, durées, bornes)
     │   ├── types.ts              phases, paniers, snapshot, événements
     │   ├── fairness.ts           SHA-256, formule du crash, commit-reveal, vérificateur
     │   ├── curve.ts              courbe e^(k·t), inverse, profondeur
     │   ├── wallet.ts             économie en centimes entiers (jamais de solde négatif)
+    │   ├── schedule.ts           localisation tour/phase déterministe (timeline)
+    │   ├── sharedWorld.ts        lobby partagé : graine publique + horloge murale
     │   ├── engine.ts             machine à états pilotée par tick(now), paris,
-    │   │                         auto cash out/auto bet, stats, abonnements
-    │   └── __tests__/            66 tests Vitest (distribution, équité, cycle, économie)
-    ├── sim/liveBets.ts         ← faux joueurs « en direct » (décoratif, local)
+    │   │                         auto cash out/auto bet, stats, mode lobby partagé
+    │   └── __tests__/            76 tests Vitest (distribution, équité, cycle, sync)
+    ├── sim/liveBets.ts         ← faux joueurs « en direct » (déterministes par tour)
     └── ui/                     ← rendu React + Canvas
-        ├── App.tsx               assemblage, clavier, sons, toasts, onglets
-        ├── useEngine.ts          pont moteur ↔ React (rAF + localStorage)
+        ├── App.tsx               assemblage, clavier, sons, toasts, onglets, recharge
+        ├── useEngine.ts          pont moteur ↔ React (rAF + horloge murale + localStorage)
         ├── sound.ts              sons synthétisés Web Audio (aucun asset)
-        ├── format.ts             formats fr-FR
+        ├── format.ts             formats fr-FR + paliers de célébration
+        ├── streamsConfig.ts      chaînes Twitch/Kick de l'onglet « Lives »
         ├── scene/                canvas : océan, plongeur, bulles, faune, syncope
-        └── components/           paniers de mise, historique, stats, équité, bandeaux
+        └── components/           mise, historique, stats, équité, lives, bandeaux
 ```
 
 Le moteur est **déterministe** : il ne lit jamais l'horloge lui-même, il est
@@ -133,6 +166,9 @@ Garanties testées (`npm test`) :
 
 - distribution des crash points conforme à `P(crash ≥ m) = 0.97/m`
   (48,5 % / 32,3 % / 9,7 %) sur 200 000 tirages, ~3-4 % de tours à `1.00x` ;
+- **lobby partagé** : deux moteurs avec la même graine publique et la même
+  horloge produisent une partie strictement identique (phase, multiplicateur,
+  historique) — c'est le test de synchronisation du mode lobby ;
 - vecteurs officiels SHA-256, déterminisme seeds → crash point, détection de
   seed falsifié ou de crash annoncé mensonger par le vérificateur ;
 - cash out refusé si le clic arrive après l'instant exact du crash, même sans

@@ -50,7 +50,20 @@ export function DiveScene({ engine, snapshot }: Props) {
 
       {/* Multiplicateur central */}
       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-        {phase === "BETTING" ? (
+        {snapshot.syncing ? (
+          <div className="text-center">
+            <p className="text-sm uppercase tracking-[0.3em] text-emerald-200/80">
+              Synchronisation du lobby…
+            </p>
+            <div
+              className="mx-auto mt-4 h-8 w-8 animate-spin rounded-full border-2 border-emerald-400/30 border-t-emerald-300"
+              aria-hidden="true"
+            />
+            <p className="mt-3 text-xs text-slate-400">
+              On vous place sur la partie en cours, commune à tous les joueurs.
+            </p>
+          </div>
+        ) : phase === "BETTING" ? (
           <div className="text-center">
             <p className="text-sm uppercase tracking-[0.3em] text-cyan-200/80">
               Prise d'air… plongée dans

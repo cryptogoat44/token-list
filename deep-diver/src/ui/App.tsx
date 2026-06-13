@@ -5,9 +5,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EngineEvent, RoundHistoryEntry } from "../engine/types";
 import {
-  driftOnlineCount,
   generateRoundBettors,
-  initialOnlineCount,
+  onlineCountForRound,
   viewBettors,
   type FakeBettor,
 } from "../sim/liveBets";
@@ -42,7 +41,7 @@ interface Toast {
 let toastId = 0;
 
 export default function App() {
-  const { engine, snapshot, onEvents } = useEngine();
+  const { engine, snapshot, onEvents, clock } = useEngine();
   const soundRef = useRef<SoundManager | null>(null);
   if (soundRef.current === null) {
     soundRef.current = new SoundManager(readStoredMuted());
@@ -68,9 +67,12 @@ export default function App() {
     celebrationTimer.current = setTimeout(() => setCelebration(null), 4200);
   }, []);
 
-  // ── Faux joueurs en direct ────────────────────────────────────────────────
-  const [bettors, setBettors] = useState<FakeBettor[]>(() => generateRoundBettors());
-  const [onlineCount, setOnlineCount] = useState(() => initialOnlineCount());
+  // ── Faux joueurs en direct (déterministes par tour : salle partagée) ──────
+  // Dérivés de l'identifiant du tour : tous les joueurs du lobby voient
+  // exactement la même salle au même moment.
+  const roundId = snapshot.round.roundId;
+  const bettors = useMemo<FakeBettor[]>(() => generateRoundBettors(roundId), [roundId]);
+  const onlineCount = useMemo(() => onlineCountForRound(roundId), [roundId]);
 
   const pushToast = useCallback((text: string, kind: Toast["kind"]) => {
     const id = ++toastId;
@@ -85,11 +87,7 @@ export default function App() {
         switch (e.type) {
           case "phaseChanged":
             if (e.phase === "DIVING") sound.startDive();
-            if (e.phase === "BETTING") {
-              sound.stopDive();
-              setBettors(generateRoundBettors());
-              setOnlineCount((c) => driftOnlineCount(c));
-            }
+            if (e.phase === "BETTING") sound.stopDive();
             break;
           case "betPlaced":
             sound.betPlaced();
@@ -182,10 +180,10 @@ export default function App() {
       } else if (state.phase === "BETTING" && slotState.status === "placed") {
         engine.cancelBet(slot);
       } else if (state.phase === "DIVING" && slotState.status === "playing") {
-        engine.cashOut(slot, performance.now());
+        engine.cashOut(slot, clock());
       }
     },
-    [engine, betCents0, betCents1, unlockAudio],
+    [engine, betCents0, betCents1, unlockAudio, clock],
   );
 
   // ── Raccourcis clavier : Espace/1 → panier 1, 2 → panier 2, M → muet ─────
@@ -260,6 +258,13 @@ export default function App() {
             </span>
             <span className="rounded-md border border-cyan-400/30 bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-cyan-300">
               démo
+            </span>
+            <span
+              className="hidden items-center gap-1 rounded-md border border-emerald-400/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-300 sm:inline-flex"
+              title="Tous les joueurs partagent la même partie, au même instant."
+            >
+              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+              Lobby partagé
             </span>
           </h1>
           <div className="flex items-center gap-2">
@@ -352,6 +357,7 @@ export default function App() {
                 betCents={betCents0}
                 onBetCentsChange={setBetCents0}
                 onInteract={unlockAudio}
+                clock={clock}
               />
               <BetPanel
                 engine={engine}
@@ -360,6 +366,7 @@ export default function App() {
                 betCents={betCents1}
                 onBetCentsChange={setBetCents1}
                 onInteract={unlockAudio}
+                clock={clock}
               />
             </div>
           </div>
@@ -390,7 +397,7 @@ export default function App() {
                 />
               )}
               {tab === "fair" && (
-                <FairnessPanel engine={engine} snapshot={snapshot} selectedRound={selectedRound} />
+                <FairnessPanel engine={engine} snapshot={snapshot} selectedRound={selectedRound} shared />
               )}
             </div>
           </aside>

@@ -111,6 +111,8 @@ export type EngineEvent =
 /** Instantané complet de l'état public du moteur, recalculé à chaque tick. */
 export interface EngineSnapshot {
   phase: Phase;
+  /** Mode lobby partagé : true tant que la timeline n'est pas synchronisée. */
+  syncing: boolean;
   /** Horloge du dernier tick (ms). */
   now: number;
   /** Fin de la fenêtre de pari (ms), pertinent en phase BETTING. */

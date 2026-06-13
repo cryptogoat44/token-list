@@ -48,6 +48,9 @@ export interface DiveTier {
 }
 
 const DIVE_TIERS: DiveTier[] = [
+  { min: 100_000, label: "FOSSE DES MARIANES", emoji: "🏆", celebrate: true },
+  { min: 10_000, label: "POINT NÉMO", emoji: "💎", celebrate: true },
+  { min: 1_000, label: "PLONGÉE MYTHIQUE", emoji: "🐙", celebrate: true },
   { min: 100, label: "PLONGÉE LÉGENDAIRE", emoji: "👑", celebrate: true },
   { min: 50, label: "ZONE HADALE", emoji: "🌋", celebrate: true },
   { min: 20, label: "ABYSSES", emoji: "🐋", celebrate: true },

@@ -30,6 +30,7 @@ import {
   realFairnessProvider,
   type FairnessProvider,
 } from "./fairness";
+import type { SharedState, SharedWorld } from "./sharedWorld";
 import type {
   AutoBetConfig,
   EngineEvent,
@@ -64,6 +65,13 @@ export interface EngineOptions {
   initialBalanceCents?: number;
   /** Fournisseur d'aléa — remplaçable dans les tests. */
   fairness?: FairnessProvider;
+  /**
+   * Monde partagé : si fourni, le moteur passe en mode « lobby unique ». La
+   * timeline des tours (phases, points de crash) n'est plus pilotée par des
+   * minuteurs internes mais lue depuis cette horloge déterministe commune à
+   * tous les joueurs. Les paris et le solde restent locaux à chaque joueur.
+   */
+  sharedWorld?: SharedWorld;
 }
 
 interface RoundInternal {
@@ -139,9 +147,18 @@ export class GameEngine {
   /** Promesse de préparation du tour courant (utile aux tests). */
   private prepPromise: Promise<void> = Promise.resolve();
 
+  // ── Mode lobby partagé ────────────────────────────────────────────────────
+  private readonly sharedWorld: SharedWorld | null;
+  private sharedState: SharedState | null = null;
+  private sharedPeriodIndex = -1;
+  private sharedRoundIndex: number | null = null;
+  private sharedPhase: Phase | null = null;
+  private syncing = false;
+
   constructor(options: EngineOptions = {}) {
     this.config = resolveConfig(options.config);
     this.fairness = options.fairness ?? realFairnessProvider;
+    this.sharedWorld = options.sharedWorld ?? null;
     this.clientSeed = options.clientSeed ?? randomSeedHex(8);
     this.balanceCents =
       options.initialBalanceCents ?? this.config.startingBalanceCents;
@@ -159,6 +176,13 @@ export class GameEngine {
    */
   tick(now: number): void {
     this.now = Math.max(now, this.now); // l'horloge ne recule jamais
+
+    // Mode lobby partagé : la timeline vient du monde commun, pas des minuteurs.
+    if (this.sharedWorld) {
+      this.syncShared(now);
+      return;
+    }
+
     if (!this.started) {
       this.started = true;
       this.enterBetting(this.now);
@@ -171,6 +195,135 @@ export class GameEngine {
       if (!advanced) break;
     }
     this.emitChange();
+  }
+
+  // ─────────────────────────────────────────────────── mode lobby partagé
+
+  /**
+   * Synchronise l'état du moteur sur la timeline partagée à l'instant `now`.
+   * Les paris/solde/stats du joueur restent locaux ; seules les phases et les
+   * points de crash sont dictés par le monde commun.
+   */
+  private syncShared(now: number): void {
+    const st = this.sharedWorld!.stateAt(now);
+    this.sharedState = st;
+
+    if (!st.ready) {
+      // Timeline pas encore calculée : on affiche un état neutre « sync ».
+      this.syncing = true;
+      this.phase = "BETTING";
+      this.phaseEndsAt = 0;
+      this.emitChange();
+      return;
+    }
+    this.syncing = false;
+
+    const roundChanged =
+      this.sharedRoundIndex === null ||
+      st.periodIndex !== this.sharedPeriodIndex ||
+      st.roundIndex !== this.sharedRoundIndex;
+
+    // Bornes temporelles du tour courant (pour le multiplicateur et l'anim).
+    this.diveStartAt = st.diveStartAt;
+    this.crashAt = st.crashAt;
+    this.phaseEndsAt = st.bettingEndsAt;
+
+    if (roundChanged) {
+      // Un pari encore « playing » appartenait au tour précédent : il a crashé
+      // (cas d'un onglet en arrière-plan ayant sauté la phase CRASH).
+      this.forceSettleLingering();
+      this.sharedPeriodIndex = st.periodIndex;
+      this.sharedRoundIndex = st.roundIndex;
+      this.sharedPhase = null;
+      this.slots.forEach((s) => {
+        s.status = "idle";
+        s.betCents = null;
+        s.cashedOutAt = null;
+        s.winCents = null;
+      });
+    }
+
+    this.phase = st.phase;
+
+    if (this.sharedPhase !== st.phase) {
+      this.handleSharedPhaseTransition(st.phase, st.crashPoint);
+      this.sharedPhase = st.phase;
+      if (st.phase === "BETTING") this.applyAutoBets();
+    }
+
+    if (st.phase === "DIVING") {
+      this.settleAutoCashoutsUpTo(this.currentRawMultiplier());
+    }
+
+    this.history = st.history;
+    this.emitChange();
+  }
+
+  private handleSharedPhaseTransition(next: Phase, crashPoint: number): void {
+    switch (next) {
+      case "DIVING":
+        this.slots.forEach((s) => {
+          if (s.status === "placed") s.status = "playing";
+        });
+        this.pushEvent({ type: "phaseChanged", phase: "DIVING" });
+        break;
+      case "CRASH":
+        this.settleSharedCrash(crashPoint);
+        this.pushEvent({ type: "phaseChanged", phase: "CRASH" });
+        break;
+      case "RESULT":
+        this.pushEvent({ type: "phaseChanged", phase: "RESULT" });
+        break;
+      case "BETTING":
+        this.pushEvent({ type: "phaseChanged", phase: "BETTING" });
+        break;
+    }
+  }
+
+  /** Règle la syncope du tour courant : paniers non encaissés = perdus. */
+  private settleSharedCrash(crashPoint: number): void {
+    let playerHadBet = false;
+    let roundNet = 0;
+    this.slots.forEach((s) => {
+      if (s.status === "cashed") {
+        playerHadBet = true;
+        roundNet += (s.winCents ?? 0) - (s.betCents ?? 0);
+      }
+      if (s.status === "playing") {
+        playerHadBet = true;
+        roundNet -= s.betCents ?? 0;
+        s.status = "lost";
+        this.pushEvent({ type: "betLost", slot: s.id, betCents: s.betCents ?? 0 });
+        if (s.autoBet?.stopOnLoss) this.stopAutoBet(s.id, "loss");
+      }
+    });
+    if (playerHadBet) {
+      this.stats.roundsPlayed += 1;
+      this.updateStreaks(roundNet);
+    }
+    this.lastCrashPoint = crashPoint;
+    this.pushEvent({ type: "crashed", crashPoint });
+  }
+
+  /**
+   * Clôture défensive d'un tour dont la phase CRASH n'aurait pas été traitée
+   * (gros saut d'horloge). Sans effet si rien n'est resté « playing ».
+   */
+  private forceSettleLingering(): void {
+    if (!this.slots.some((s) => s.status === "playing")) return;
+    let roundNet = 0;
+    this.slots.forEach((s) => {
+      if (s.status === "playing") {
+        roundNet -= s.betCents ?? 0;
+        s.status = "lost";
+        this.pushEvent({ type: "betLost", slot: s.id, betCents: s.betCents ?? 0 });
+        if (s.autoBet?.stopOnLoss) this.stopAutoBet(s.id, "loss");
+      } else if (s.status === "cashed") {
+        roundNet += (s.winCents ?? 0) - (s.betCents ?? 0);
+      }
+    });
+    this.stats.roundsPlayed += 1;
+    this.updateStreaks(roundNet);
   }
 
   /** Une étape de machine à états ; renvoie true si une transition a eu lieu. */
@@ -256,6 +409,7 @@ export class GameEngine {
         round.clientSeed,
         round.nonce,
         this.config.houseEdge,
+        this.config.maxMultiplier,
       ),
     ]);
     // Le tour a pu être abandonné (reset) entre-temps : on vérifie l'identité.
@@ -329,6 +483,12 @@ export class GameEngine {
   }
 
   // ─────────────────────────────────────────────────────── multiplicateur
+
+  /** Point de crash du tour courant (monde partagé ou tour solo). */
+  private currentCrashPoint(): number {
+    if (this.sharedWorld && this.sharedState) return this.sharedState.crashPoint;
+    return this.round.crashPoint ?? 1.0;
+  }
 
   /** Multiplicateur continu à l'instant du dernier tick (borné au crash). */
   private currentRawMultiplier(): number {
@@ -425,7 +585,7 @@ export class GameEngine {
    * STRICTEMENT inférieures au crashPoint sont honorées.
    */
   private settleAutoCashoutsUpTo(upTo: number): void {
-    const crashPoint = this.round.crashPoint ?? 1.0;
+    const crashPoint = this.currentCrashPoint();
     this.slots.forEach((s) => {
       if (s.status !== "playing" || s.autoCashout === null) return;
       const target = s.autoCashout;
@@ -590,8 +750,34 @@ export class GameEngine {
     const raw = this.currentRawMultiplier();
     const displayed = truncateMultiplier(raw);
     const roundOver = this.phase === "CRASH" || this.phase === "RESULT";
+    const shared = this.sharedWorld !== null;
+    const ss = this.sharedState;
+
+    // Bloc « provably fair » : en mode partagé, la graine est PUBLIQUE et donc
+    // toujours révélée (timeline déterministe, vérifiable par tous).
+    const round =
+      shared && ss
+        ? {
+            roundId: ss.roundId,
+            nonce: ss.nonce,
+            clientSeed: ss.clientSeed,
+            serverSeedHash: ss.serverSeedHash || null,
+            serverSeedRevealed: ss.serverSeed,
+            crashPoint: roundOver ? ss.crashPoint : null,
+          }
+        : {
+            roundId: this.round.roundId,
+            nonce: this.round.nonce,
+            clientSeed: this.round.clientSeed,
+            serverSeedHash: this.round.serverSeedHash,
+            // Solo : seed serveur et crash révélés seulement après coup.
+            serverSeedRevealed: roundOver ? this.round.serverSeed : null,
+            crashPoint: roundOver ? this.round.crashPoint : null,
+          };
+
     this.snapshotCache = {
       phase: this.phase,
+      syncing: this.syncing,
       now: this.now,
       bettingEndsAt: this.phase === "BETTING" ? this.phaseEndsAt : 0,
       multiplier: displayed,
@@ -606,15 +792,7 @@ export class GameEngine {
       balanceCents: this.balanceCents,
       slots: [{ ...this.slots[0], autoBet: this.slots[0].autoBet && { ...this.slots[0].autoBet } },
               { ...this.slots[1], autoBet: this.slots[1].autoBet && { ...this.slots[1].autoBet } }],
-      round: {
-        roundId: this.round.roundId,
-        nonce: this.round.nonce,
-        clientSeed: this.round.clientSeed,
-        serverSeedHash: this.round.serverSeedHash,
-        // Le seed serveur et le point de crash ne sont révélés qu'après coup.
-        serverSeedRevealed: roundOver ? this.round.serverSeed : null,
-        crashPoint: roundOver ? this.round.crashPoint : null,
-      },
+      round,
       lastCrashPoint: this.lastCrashPoint,
       history: [...this.history],
       stats: { ...this.stats },

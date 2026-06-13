@@ -17,6 +17,8 @@ interface Props {
   onBetCentsChange: (cents: number) => void;
   /** Appelé sur toute interaction (déverrouille l'audio). */
   onInteract: () => void;
+  /** Horloge du moteur (murale en lobby partagé). */
+  clock: () => number;
 }
 
 const REASON_LABELS: Record<string, string> = {
@@ -40,6 +42,7 @@ export function BetPanel({
   betCents,
   onBetCentsChange,
   onInteract,
+  clock,
 }: Props) {
   const slotState: SlotState = snapshot.slots[slot];
   const [error, setError] = useState<string | null>(null);
@@ -100,7 +103,7 @@ export function BetPanel({
       className:
         "bg-emerald-500 hover:bg-emerald-400 text-slate-950 animate-pulse shadow-[0_0_30px_-5px_rgba(52,211,153,0.9)]",
       disabled: false,
-      action: () => report(engine.cashOut(slot, performance.now())),
+      action: () => report(engine.cashOut(slot, clock())),
     };
   } else if (slotState.status === "cashed") {
     mainButton = {

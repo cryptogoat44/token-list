@@ -17,12 +17,14 @@ interface Props {
   snapshot: EngineSnapshot;
   /** Tour présélectionné (clic sur l'historique), à vérifier. */
   selectedRound: RoundHistoryEntry | null;
+  /** Mode lobby partagé : graine publique déterministe, clientSeed non éditable. */
+  shared?: boolean;
 }
 
 const fieldCls =
   "w-full rounded-lg border border-cyan-400/20 bg-slate-950/70 px-2.5 py-1.5 font-mono text-xs text-cyan-50 outline-none focus:border-cyan-400/60";
 
-export function FairnessPanel({ engine, snapshot, selectedRound }: Props) {
+export function FairnessPanel({ engine, snapshot, selectedRound, shared }: Props) {
   const [seedDraft, setSeedDraft] = useState(snapshot.round.clientSeed);
   const [seedApplied, setSeedApplied] = useState(false);
 
@@ -99,44 +101,61 @@ export function FairnessPanel({ engine, snapshot, selectedRound }: Props) {
         </dl>
       </section>
 
-      <section className="rounded-xl border border-cyan-400/10 bg-slate-950/50 p-3">
-        <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-cyan-200/70">
-          Votre clientSeed
-        </h4>
-        <div className="flex gap-2">
-          <label className="sr-only" htmlFor="client-seed-input">
-            Seed client
-          </label>
-          <input
-            id="client-seed-input"
-            className={fieldCls}
-            value={seedDraft}
-            maxLength={64}
-            onChange={(e) => {
-              setSeedDraft(e.target.value);
-              setSeedApplied(false);
-            }}
-          />
-          <button
-            type="button"
-            className="shrink-0 rounded-lg bg-cyan-500/20 px-3 py-1.5 text-xs font-bold text-cyan-300 transition hover:bg-cyan-500/30 active:scale-95"
-            onClick={() => {
-              const result = engine.setClientSeed(seedDraft);
-              if (result.ok) {
-                storeClientSeed(seedDraft.trim());
-                setSeedApplied(true);
-              }
-            }}
-          >
-            Appliquer
-          </button>
-        </div>
-        <p className="mt-1.5 text-[11px] text-slate-500">
-          {seedApplied
-            ? "✓ Sera utilisé à partir du prochain tour (nonce remis à 0)."
-            : "Participe au tirage : changez-le quand vous voulez, il s'applique au tour suivant."}
-        </p>
-      </section>
+      {shared ? (
+        <section className="rounded-xl border border-emerald-400/15 bg-emerald-500/5 p-3">
+          <h4 className="mb-1.5 text-xs font-bold uppercase tracking-wider text-emerald-200/80">
+            Équité du lobby partagé
+          </h4>
+          <p className="text-[11px] leading-relaxed text-slate-400">
+            Tous les joueurs partagent la même partie : les tours sont
+            <strong className="text-slate-300"> déterministes et publics</strong>.
+            Chaque point de crash est dérivé par SHA-256 d'une graine publique,
+            de l'index de période (heure) et de l'index du tour — donc
+            <strong className="text-slate-300"> reproductible et vérifiable par
+            n'importe qui</strong>, sans qu'aucune partie ne puisse manipuler le
+            résultat. Le vérificateur ci-dessous recalcule n'importe quel tour.
+          </p>
+        </section>
+      ) : (
+        <section className="rounded-xl border border-cyan-400/10 bg-slate-950/50 p-3">
+          <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-cyan-200/70">
+            Votre clientSeed
+          </h4>
+          <div className="flex gap-2">
+            <label className="sr-only" htmlFor="client-seed-input">
+              Seed client
+            </label>
+            <input
+              id="client-seed-input"
+              className={fieldCls}
+              value={seedDraft}
+              maxLength={64}
+              onChange={(e) => {
+                setSeedDraft(e.target.value);
+                setSeedApplied(false);
+              }}
+            />
+            <button
+              type="button"
+              className="shrink-0 rounded-lg bg-cyan-500/20 px-3 py-1.5 text-xs font-bold text-cyan-300 transition hover:bg-cyan-500/30 active:scale-95"
+              onClick={() => {
+                const result = engine.setClientSeed(seedDraft);
+                if (result.ok) {
+                  storeClientSeed(seedDraft.trim());
+                  setSeedApplied(true);
+                }
+              }}
+            >
+              Appliquer
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-slate-500">
+            {seedApplied
+              ? "✓ Sera utilisé à partir du prochain tour (nonce remis à 0)."
+              : "Participe au tirage : changez-le quand vous voulez, il s'applique au tour suivant."}
+          </p>
+        </section>
+      )}
 
       <section className="rounded-xl border border-cyan-400/10 bg-slate-950/50 p-3">
         <h4 className="mb-2 text-xs font-bold uppercase tracking-wider text-cyan-200/70">

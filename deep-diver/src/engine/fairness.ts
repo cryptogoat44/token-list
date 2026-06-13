@@ -77,7 +77,11 @@ export function uint32FromHashHex(hashHex: string): number {
  * Point de crash à partir d'un entier 32 bits uniforme — fonction pure,
  * cœur mathématique du jeu (voir l'en-tête du fichier pour la distribution).
  */
-export function crashPointFromUint32(int32: number, houseEdge: number): number {
+export function crashPointFromUint32(
+  int32: number,
+  houseEdge: number,
+  maxMultiplier = Number.POSITIVE_INFINITY,
+): number {
   if (!Number.isInteger(int32) || int32 < 0 || int32 >= TWO_POW_32) {
     throw new Error("int32 doit être un entier dans [0, 2^32 − 1]");
   }
@@ -86,7 +90,12 @@ export function crashPointFromUint32(int32: number, houseEdge: number): number {
   }
   const raw = (TWO_POW_32 / (int32 + 1)) * (1 - houseEdge);
   // Troncature à 2 décimales puis plancher à 1.00 (jamais en dessous).
-  return Math.max(1.0, Math.floor(raw * 100) / 100);
+  const crash = Math.max(1.0, Math.floor(raw * 100) / 100);
+  // Plafond du multiplicateur, comme Aviator (max théorique 1 000 000x) : ne
+  // change rien à la distribution sous le plafond, n'affecte que l'extrême
+  // queue (~1 tour sur un million) et donc l'avantage maison de façon
+  // totalement négligeable.
+  return Math.min(crash, maxMultiplier);
 }
 
 /** Pipeline complet : seeds + nonce → hash → entier 32 bits → point de crash. */
@@ -95,10 +104,15 @@ export async function computeCrashPoint(
   clientSeed: string,
   nonce: number,
   houseEdge: number,
+  maxMultiplier = Number.POSITIVE_INFINITY,
 ): Promise<{ hash: string; int32: number; crashPoint: number }> {
   const hash = await sha256Hex(roundMessage(serverSeed, clientSeed, nonce));
   const int32 = uint32FromHashHex(hash);
-  return { hash, int32, crashPoint: crashPointFromUint32(int32, houseEdge) };
+  return {
+    hash,
+    int32,
+    crashPoint: crashPointFromUint32(int32, houseEdge, maxMultiplier),
+  };
 }
 
 /** Engagement publié avant le tour : SHA-256 du serverSeed seul. */
@@ -115,6 +129,8 @@ export interface VerificationInput {
   expectedServerSeedHash?: string;
   /** Point de crash annoncé par le jeu (optionnel). */
   expectedCrashPoint?: number;
+  /** Plafond du multiplicateur appliqué par le jeu (défaut : aucun). */
+  maxMultiplier?: number;
 }
 
 export interface VerificationResult {
@@ -146,6 +162,7 @@ export async function verifyRound(
     input.clientSeed,
     input.nonce,
     input.houseEdge,
+    input.maxMultiplier ?? Number.POSITIVE_INFINITY,
   );
   const commitMatches =
     input.expectedServerSeedHash === undefined
@@ -178,6 +195,7 @@ export interface FairnessProvider {
     clientSeed: string,
     nonce: number,
     houseEdge: number,
+    maxMultiplier?: number,
   ): Promise<number>;
 }
 
@@ -185,7 +203,14 @@ export interface FairnessProvider {
 export const realFairnessProvider: FairnessProvider = {
   generateServerSeed: () => randomSeedHex(32),
   commit: (serverSeed) => commitServerSeed(serverSeed),
-  crashPoint: async (serverSeed, clientSeed, nonce, houseEdge) =>
-    (await computeCrashPoint(serverSeed, clientSeed, nonce, houseEdge))
-      .crashPoint,
+  crashPoint: async (serverSeed, clientSeed, nonce, houseEdge, maxMultiplier) =>
+    (
+      await computeCrashPoint(
+        serverSeed,
+        clientSeed,
+        nonce,
+        houseEdge,
+        maxMultiplier ?? Number.POSITIVE_INFINITY,
+      )
+    ).crashPoint,
 };

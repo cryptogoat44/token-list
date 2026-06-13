@@ -10,6 +10,8 @@
 export interface GameConfig {
   /** Avantage maison (0.03 = 3 %, soit un RTP de 97 %). */
   houseEdge: number;
+  /** Multiplicateur maximal possible (comme Aviator : 1 000 000x). */
+  maxMultiplier: number;
   /**
    * Taux de croissance k de la courbe multiplier(t) = e^(k·t) (t en secondes).
    * k = 0.14 → ~2x atteint en ≈ 4,95 s, ~10x en ≈ 16,4 s.
@@ -39,6 +41,7 @@ export interface GameConfig {
 
 export const DEFAULT_CONFIG: GameConfig = {
   houseEdge: 0.03,
+  maxMultiplier: 1_000_000, // plafond identique à Aviator
   growthRateK: 0.14,
   bettingDurationMs: 8_000,
   crashDurationMs: 1_600,

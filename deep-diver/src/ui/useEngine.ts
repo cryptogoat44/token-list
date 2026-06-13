@@ -4,8 +4,10 @@
  * Persiste solde, clientSeed et préférence sonore dans localStorage.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { DEFAULT_CONFIG } from "../engine/config";
 import { GameEngine } from "../engine/engine";
 import { randomSeedHex } from "../engine/fairness";
+import { SharedWorld } from "../engine/sharedWorld";
 import type { EngineEvent, EngineSnapshot } from "../engine/types";
 
 const STORAGE = {
@@ -70,17 +72,26 @@ export interface UseEngineResult {
   snapshot: EngineSnapshot;
   /** Abonne un écouteur d'événements moteur (sons, toasts, particules…). */
   onEvents: (listener: (events: EngineEvent[]) => void) => () => void;
+  /** Horloge utilisée par le moteur (murale en mode lobby partagé). */
+  clock: () => number;
 }
 
 export function useEngine(): UseEngineResult {
-  const engine = useMemo(
-    () =>
-      new GameEngine({
-        clientSeed: readStoredClientSeed(),
-        initialBalanceCents: readStoredBalance(),
-      }),
-    [],
-  );
+  // Mode « lobby partagé » : tous les joueurs partagent la même timeline,
+  // calculée depuis l'horloge murale (UTC) et une graine publique. Le moteur
+  // est donc piloté par Date.now() (comparable entre machines), pas par
+  // performance.now() (relatif au chargement de la page).
+  const { engine, world, clock } = useMemo(() => {
+    const world = new SharedWorld(DEFAULT_CONFIG);
+    void world.prime(Date.now()); // amorce le précalcul pour éviter le flash « sync »
+    const engine = new GameEngine({
+      sharedWorld: world,
+      clientSeed: readStoredClientSeed(),
+      initialBalanceCents: readStoredBalance(),
+    });
+    return { engine, world, clock: () => Date.now() };
+  }, []);
+  void world;
 
   const [snapshot, setSnapshot] = useState<EngineSnapshot>(() =>
     engine.getSnapshot(),
@@ -106,7 +117,7 @@ export function useEngine(): UseEngineResult {
 
     let raf = 0;
     const loop = () => {
-      engine.tick(performance.now());
+      engine.tick(clock());
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -115,7 +126,7 @@ export function useEngine(): UseEngineResult {
       cancelAnimationFrame(raf);
       unsubscribe();
     };
-  }, [engine]);
+  }, [engine, clock]);
 
   const onEvents = useMemo(
     () => (listener: (events: EngineEvent[]) => void) => {
@@ -127,5 +138,5 @@ export function useEngine(): UseEngineResult {
     [],
   );
 
-  return { engine, snapshot, onEvents };
+  return { engine, snapshot, onEvents, clock };
 }
