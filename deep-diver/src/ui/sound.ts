@@ -19,6 +19,14 @@ export class SoundManager {
   private whiteBuf: AudioBuffer | null = null;
   private ambientNodes: AudioNode[] = [];
 
+  /**
+   * Échantillons audio RÉELS optionnels. S'ils sont déposés dans
+   * `public/audio/` (voir public/audio/README.md), ils sont chargés au
+   * démarrage et remplacent la synthèse correspondante — sinon on synthétise.
+   */
+  private samples: Record<string, AudioBuffer> = {};
+  private holdBedSrc: AudioBufferSourceNode | null = null;
+
   // Respiration (prise d'air) : minuteurs programmés à annuler au besoin.
   private breathTimers: ReturnType<typeof setTimeout>[] = [];
 
@@ -63,6 +71,58 @@ export class SoundManager {
     this.master.connect(this.ctx.destination);
     this.whiteBuf = this.makeWhiteNoise(2);
     this.startAmbient();
+    void this.loadSamples();
+  }
+
+  /** Noms des échantillons réels optionnels (public/audio/<nom>.mp3). */
+  private static readonly SAMPLE_NAMES = [
+    "inhale",
+    "exhale",
+    "final-inhale",
+    "breath-hold",
+    "gasp",
+    "relief",
+  ];
+
+  /** Charge les échantillons réels s'ils existent (sinon repli synthèse). */
+  private async loadSamples(): Promise<void> {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    const base = import.meta.env.BASE_URL || "./";
+    await Promise.all(
+      SoundManager.SAMPLE_NAMES.map(async (name) => {
+        try {
+          const res = await fetch(`${base}audio/${name}.mp3`);
+          if (!res.ok) return;
+          const buf = await ctx.decodeAudioData(await res.arrayBuffer());
+          this.samples[name] = buf;
+        } catch {
+          /* pas de fichier / format invalide : on synthétisera */
+        }
+      }),
+    );
+  }
+
+  /** Joue un échantillon réel (renvoie la source pour les boucles), ou null. */
+  private playSample(
+    name: string,
+    gainValue: number,
+    loop = false,
+    rate = 1,
+  ): AudioBufferSourceNode | null {
+    const ctx = this.ctx;
+    const buf = this.samples[name];
+    if (!ctx || !this.master || !buf) return null;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = loop;
+    src.playbackRate.value = rate;
+    const g = ctx.createGain();
+    g.gain.value = gainValue;
+    src.connect(g).connect(this.master);
+    src.start();
+    if (!loop) src.stop(ctx.currentTime + buf.duration / rate + 0.05);
+    return src;
   }
 
   /** Tampon de bruit blanc réutilisable (souffles, spasmes). */
@@ -150,16 +210,61 @@ export class SoundManager {
     src.stop(t0 + opts.dur + 0.05);
   }
 
+  /**
+   * Composante « voisée » (cordes vocales) façon « haaa » : superposée au
+   * souffle de bruit, elle le rend nettement plus humain. Volume volontairement
+   * faible (le souffle reste dominant).
+   */
+  private voiced(opts: { dur: number; f0: number; peak: number }): void {
+    if (!this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(opts.f0 * 0.95, t0);
+    osc.frequency.linearRampToValueAtTime(opts.f0 * 1.08, t0 + opts.dur);
+    // Deux formants → voyelle ouverte « ha ».
+    const f1 = ctx.createBiquadFilter();
+    f1.type = "bandpass";
+    f1.frequency.value = 720;
+    f1.Q.value = 4;
+    const f2 = ctx.createBiquadFilter();
+    f2.type = "bandpass";
+    f2.frequency.value = 1150;
+    f2.Q.value = 6;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(opts.peak, t0 + opts.dur * 0.5);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + opts.dur);
+    // Léger vibrato : grain organique.
+    const vib = ctx.createOscillator();
+    vib.frequency.value = 5 + Math.random() * 2;
+    const vibG = ctx.createGain();
+    vibG.gain.value = opts.f0 * 0.02;
+    vib.connect(vibG).connect(osc.frequency);
+    osc.connect(f1).connect(g).connect(this.master);
+    osc.connect(f2).connect(g);
+    osc.start(t0);
+    vib.start(t0);
+    osc.stop(t0 + opts.dur + 0.05);
+    vib.stop(t0 + opts.dur + 0.05);
+  }
+
   private inhale(big = false): void {
+    // Échantillon réel si disponible, sinon synthèse + voix.
+    if (this.playSample(big ? "final-inhale" : "inhale", big ? 0.9 : 0.7)) return;
     this.breath(
       big
         ? { dur: 1.9, peak: 0.42, fStart: 240, fEnd: 1500, attackRatio: 0.82, q: 0.6 }
         : { dur: 1.15, peak: 0.22, fStart: 340, fEnd: 1050, attackRatio: 0.72 },
     );
+    this.voiced(big ? { dur: 1.6, f0: 145, peak: 0.07 } : { dur: 1.0, f0: 165, peak: 0.035 });
   }
 
   private exhale(): void {
+    if (this.playSample("exhale", 0.6)) return;
     this.breath({ dur: 1.0, peak: 0.16, fStart: 900, fEnd: 300, attackRatio: 0.18 });
+    this.voiced({ dur: 0.9, f0: 130, peak: 0.025 });
   }
 
   /**
@@ -221,6 +326,9 @@ export class SoundManager {
     this.holdDroneFilter = lp;
     this.holdDroneOsc = sub;
 
+    // Lit d'un vrai enregistrement de souffle retenu si disponible.
+    this.holdBedSrc = this.playSample("breath-hold", 0.5, true);
+
     this.scheduleContraction();
   }
 
@@ -241,6 +349,14 @@ export class SoundManager {
       this.holdTimer = null;
     }
     const ctx = this.ctx;
+    if (this.holdBedSrc && ctx) {
+      try {
+        this.holdBedSrc.stop(ctx.currentTime + 0.2);
+      } catch {
+        /* déjà arrêté */
+      }
+      this.holdBedSrc = null;
+    }
     this.holdNodes.forEach((n) => {
       if ((n instanceof AudioBufferSourceNode || n instanceof OscillatorNode) && ctx) {
         try {
@@ -375,11 +491,14 @@ export class SoundManager {
     this.blip(440, 280, 0.12, "triangle", 0.14);
   }
 
-  /** Remontée réussie : bouffée de bulles vers le haut + petit arpège. */
+  /** Remontée réussie : souffle de soulagement + petit arpège clair. */
   cashout(): void {
     if (!this.ctx) return;
-    // Souffle de soulagement (on respire enfin) + arpège clair.
-    this.breath({ dur: 0.9, peak: 0.2, fStart: 700, fEnd: 1600, attackRatio: 0.25 });
+    // Souffle de soulagement (on respire enfin) : échantillon réel ou synthèse.
+    if (!this.playSample("relief", 0.8)) {
+      this.breath({ dur: 0.9, peak: 0.2, fStart: 700, fEnd: 1600, attackRatio: 0.25 });
+      this.voiced({ dur: 0.8, f0: 180, peak: 0.04 });
+    }
     const notes = [523, 659, 784, 1047];
     notes.forEach((f, i) => {
       this.breathTimers.push(setTimeout(() => this.blip(f, f * 1.01, 0.18, "sine", 0.2), i * 70));
@@ -396,10 +515,13 @@ export class SoundManager {
     setTimeout(() => this.blip(2093, 2100, 0.7, "sine", 0.15), notes.length * 65);
   }
 
-  /** Syncope : souffle qui s'échappe + chute grave. */
+  /** Syncope : souffle qui s'échappe (gasp) + chute grave. */
   crash(): void {
-    // Expiration brutale et incontrôlée (l'air s'échappe).
-    this.breath({ dur: 0.7, peak: 0.32, fStart: 1100, fEnd: 220, attackRatio: 0.1, q: 0.5 });
+    // Expiration brutale et incontrôlée : échantillon réel ou synthèse.
+    if (!this.playSample("gasp", 0.9)) {
+      this.breath({ dur: 0.7, peak: 0.32, fStart: 1100, fEnd: 220, attackRatio: 0.1, q: 0.5 });
+      this.voiced({ dur: 0.5, f0: 160, peak: 0.06 });
+    }
     this.blip(320, 60, 0.6, "sawtooth", 0.16);
     this.blip(150, 40, 0.8, "sine", 0.2);
   }

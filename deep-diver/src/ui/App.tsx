@@ -12,6 +12,7 @@ import {
 } from "../sim/liveBets";
 import { FakeMoneyBanner, ResponsibleGamingNotice } from "./components/Banners";
 import { BetPanel } from "./components/BetPanel";
+import { ChatPanel } from "./components/ChatPanel";
 import { FairnessPanel } from "./components/FairnessPanel";
 import { HistoryBar } from "./components/HistoryBar";
 import { LiveBets } from "./components/LiveBets";
@@ -22,7 +23,7 @@ import { DiveScene } from "./scene/DiveScene";
 import { SoundManager } from "./sound";
 import { readStoredMuted, storeMuted, useEngine } from "./useEngine";
 
-type SideTab = "live" | "stats" | "fair" | "streams";
+type SideTab = "live" | "chat" | "stats" | "fair" | "streams";
 
 interface Celebration {
   id: number;
@@ -383,14 +384,18 @@ export default function App() {
           </div>
 
           <aside className="flex max-h-[860px] min-h-[420px] flex-col rounded-2xl border border-cyan-400/10 bg-slate-900/60 p-3 backdrop-blur">
-            <div role="tablist" aria-label="Panneaux d'information" className="mb-3 grid grid-cols-4 gap-1 rounded-xl bg-slate-950/60 p-1">
-              {tabButton("live", "En direct")}
+            <div role="tablist" aria-label="Panneaux d'information" className="mb-3 grid grid-cols-5 gap-1 rounded-xl bg-slate-950/60 p-1">
+              {tabButton("live", "Direct")}
+              {tabButton("chat", "Chat")}
               {tabButton("streams", "Lives")}
               {tabButton("stats", "Stats")}
               {tabButton("fair", "Équité")}
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto pr-0.5 [scrollbar-width:thin]">
               {tab === "live" && <LiveBets bettors={liveBettorViews} onlineCount={onlineCount} />}
+              {tab === "chat" && (
+                <ChatPanel roundId={roundId} lastCrashPoint={snapshot.lastCrashPoint} />
+              )}
               {tab === "streams" && <StreamsPanel />}
               {tab === "stats" && (
                 <StatsPanel
