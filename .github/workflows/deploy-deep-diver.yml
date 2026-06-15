@@ -1,0 +1,58 @@
+# Construit l'application Deep Diver (deep-diver/) et publie le résultat sur la
+# branche gh-pages. Le site est ensuite servi par GitHub Pages depuis cette
+# branche : https://cryptogoat44.github.io/token-list/
+#
+# Cette méthode « deploy from a branch » fonctionne sur un fork : la
+# publication se fait par un simple push de la branche gh-pages (droit
+# contents: write), sans passer par l'API d'activation de Pages.
+name: Deploy Deep Diver
+
+on:
+  push:
+    branches:
+      - main
+      - claude/exciting-cerf-3zt4cr
+    paths:
+      - "deep-diver/**"
+      - ".github/workflows/deploy-deep-diver.yml"
+  workflow_dispatch:
+
+# Droit d'écriture sur le dépôt, pour pousser la branche gh-pages.
+permissions:
+  contents: write
+
+# Un seul déploiement à la fois.
+concurrency:
+  group: deploy-deep-diver
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deep-diver
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # npm install (et non npm ci) : le dépôt ignore package-lock.json.
+      - run: npm install
+      - run: npm test --silent
+      - run: npm run build
+
+      # Publie deep-diver/dist sur la branche gh-pages. peaceiris ajoute
+      # automatiquement un fichier .nojekyll (indispensable pour servir le
+      # dossier assets/ de Vite) et remplace le contenu à chaque déploiement.
+      - name: Publier sur gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: deep-diver/dist
+          publish_branch: gh-pages
+          # Branche « propre » sans historique : seul le dernier build compte.
+          force_orphan: true
+          user_name: "Claude"
+          user_email: "noreply@anthropic.com"
+          commit_message: "Déploie Deep Diver"
