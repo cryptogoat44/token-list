@@ -22,6 +22,8 @@ import { diveTier, formatCredits, formatMultiplier, type DiveTier } from "./form
 import { DiveScene } from "./scene/DiveScene";
 import { SoundManager } from "./sound";
 import { readStoredMuted, storeMuted, useEngine } from "./useEngine";
+import { useProfile } from "./useProfile";
+import { ACHIEVEMENT_BY_ID } from "../engine/achievements";
 
 type SideTab = "live" | "chat" | "stats" | "fair" | "streams";
 
@@ -43,6 +45,7 @@ let toastId = 0;
 
 export default function App() {
   const { engine, snapshot, onEvents, clock } = useEngine();
+  const profileApi = useProfile(engine);
   const soundRef = useRef<SoundManager | null>(null);
   if (soundRef.current === null) {
     soundRef.current = new SoundManager(readStoredMuted());
@@ -80,6 +83,17 @@ export default function App() {
     setToasts((list) => [...list.slice(-3), { id, text, kind }]);
     setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), 3500);
   }, []);
+
+  // Toasts de progression : succès débloqués et records personnels battus.
+  useEffect(() => {
+    return profileApi.onProfileEvents(({ newAchievements, newRecord }) => {
+      if (newRecord) pushToast("Nouveau record personnel ! 🏆", "win");
+      newAchievements.forEach((id) => {
+        const a = ACHIEVEMENT_BY_ID[id];
+        if (a) pushToast(`Succès débloqué : ${a.icon} ${a.name}`, "win");
+      });
+    });
+  }, [profileApi, pushToast]);
 
   // ── Réactions aux événements du moteur (sons, toasts, annonce ARIA) ──────
   useEffect(() => {
