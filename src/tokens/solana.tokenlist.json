@@ -184616,17 +184616,6 @@
         "social-token"
       ]
     }
-    { "chainId": 101,
-      "address": "6XpDcWPrhZeEAo15bUK9iV1xuwAmvr74gTSkw8xvSfhF",
-      "symbol": "SORA",
-      "name": "SORAFLY",
-      "decimals": 0,
-      "logoURI": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/6XpDcWPrhZeEAo15bUK9iV1xuwAmvr74gTSkw8xvSfhF/logo.png",
-      "tags": [
-        "coin"
-        ]
-    }
-
   ],
   "version": {
     "major": 0,
