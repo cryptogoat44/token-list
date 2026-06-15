@@ -51,6 +51,34 @@ Clavier : `Espace`/`1` = miser ou remonter (panier 1), `2` = panier 2,
 `M` = son. Le solde (1 000 crédits au départ) est persistant ; l'onglet
 **Stats** permet une réinitialisation complète (solde + statistiques).
 
+### Expérience joueur (plaisir, maîtrise, confiance)
+
+- **Carnet du plongeur** (bouton 📖) : records de toujours (profondeur,
+  multiplicateur, plus longue série de remontées), plongées marquantes,
+  **succès** cosmétiques, **apparence** (combinaison, traînée de bulles) et
+  **réglages**.
+- **Présets d'auto cash-out** (Prudent 1,3x / Équilibré 2x / Abysses 10x +
+  personnalisés) avec, à côté de chaque cible, la **probabilité honnête**
+  `(1 − edge)/m` de l'atteindre.
+- **Sensation de jeu** : éclat de lumière et gerbe de bulles au cash-out, petit
+  « pop », vibration mobile, multiplicateur qui « respire » et change de couleur
+  avec la profondeur.
+- **Transparence permanente** : RTP 97 % / avantage maison 3 % toujours
+  affichés, bouton **« Vérifier ce tour »** après chaque plongée.
+- **Accessibilité** : `prefers-reduced-motion` respecté (+ réglage in-app),
+  libellés ARIA, navigation clavier.
+- **Bien-être** : rappel de pause optionnel (15/30/60 min), doux et non
+  bloquant ; bouton de pause/reset toujours accessible ; rappel honnête de la
+  perte attendue.
+- **Accueil** des nouveaux à la première visite (rejouable via « ? »).
+
+> **Philosophie : plaisir sans manipulation.** Chaque fonctionnalité optimise le
+> plaisir, la maîtrise et la confiance — jamais le « temps passé » ou la
+> fréquence de mise. Aucune progression n'influe sur les probabilités ou
+> l'économie ; aucun *dark pattern* (pas de faux *near-miss*, pas d'incitation à
+> se refaire, pas de FOMO, pas de bonus de connexion obligeant, pas de
+> passerelle vers de l'argent réel).
+
 ## La mécanique, en détail
 
 ### Cycle d'un tour

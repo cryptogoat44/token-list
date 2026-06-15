@@ -25,6 +25,7 @@ import { readStoredMuted, storeMuted, useEngine } from "./useEngine";
 import { useProfile } from "./useProfile";
 import { useSettings } from "./useSettings";
 import { ProfileModal } from "./components/ProfileModal";
+import { Onboarding } from "./components/Onboarding";
 import { ACHIEVEMENT_BY_ID } from "../engine/achievements";
 import { cosmeticById } from "../engine/cosmetics";
 
@@ -76,7 +77,23 @@ export default function App() {
 
   const [muted, setMuted] = useState(sound.muted);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [onboardOpen, setOnboardOpen] = useState(() => {
+    try {
+      return !localStorage.getItem("deepdiver.onboarded");
+    } catch {
+      return false;
+    }
+  });
   const [tab, setTab] = useState<SideTab>("live");
+
+  const closeOnboarding = useCallback(() => {
+    try {
+      localStorage.setItem("deepdiver.onboarded", "1");
+    } catch {
+      /* ignore */
+    }
+    setOnboardOpen(false);
+  }, []);
   const [betCents0, setBetCents0] = useState(1_000);
   const [betCents1, setBetCents1] = useState(1_000);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -321,6 +338,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100" onPointerDown={unlockAudio}>
       <FakeMoneyBanner />
 
+      {onboardOpen && <Onboarding onClose={closeOnboarding} />}
       {profileOpen && (
         <ProfileModal
           api={profileApi}
@@ -375,6 +393,14 @@ export default function App() {
               <span aria-hidden="true">🪙</span>
               <span className="hidden sm:inline">Recharger</span>
               <span className="font-mono">+{formatCredits(engine.config.topUpCents)}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOnboardOpen(true)}
+              aria-label="Revoir les explications"
+              className="rounded-xl border border-cyan-400/20 bg-slate-900/80 px-3 py-2.5 text-sm font-bold text-cyan-100 transition hover:bg-slate-800 active:scale-95"
+            >
+              ?
             </button>
             <button
               type="button"
