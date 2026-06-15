@@ -12,6 +12,49 @@
   }
 }
 
+/* Le multiplicateur « respire » légèrement pendant la descente. */
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.025);
+  }
+}
+.breathe {
+  animation: breathe 2.6s ease-in-out infinite;
+}
+
+/* Micro-rebond d'un chiffre de gain qui apparaît. */
+@keyframes pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Accessibilité : couper les animations si l'utilisateur le demande. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  .breathe {
+    animation: none !important;
+  }
+}
+
 /* Apparition « pop » de la bannière de célébration d'un gros multiplicateur. */
 @keyframes celebPop {
   0% {

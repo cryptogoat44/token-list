@@ -6,7 +6,7 @@
 import { useEffect, useRef } from "react";
 import type { GameEngine } from "../../engine/engine";
 import type { EngineSnapshot } from "../../engine/types";
-import { formatDepth, formatMultiplier } from "../format";
+import { formatDepth, formatMultiplier, multiplierColor } from "../format";
 import { SceneRenderer } from "./renderer";
 
 interface Props {
@@ -92,10 +92,9 @@ export function DiveScene({ engine, snapshot }: Props) {
           <div className="text-center">
             <p
               className={`font-mono text-7xl font-bold tabular-nums drop-shadow-[0_0_24px_rgba(34,211,238,0.45)] sm:text-8xl ${
-                crashed
-                  ? "animate-pulse text-red-400 drop-shadow-[0_0_24px_rgba(248,113,113,0.6)]"
-                  : "text-cyan-50"
+                crashed ? "animate-pulse text-red-400 drop-shadow-[0_0_24px_rgba(248,113,113,0.6)]" : "breathe"
               }`}
+              style={crashed ? undefined : { color: multiplierColor(multiplier) }}
             >
               {formatMultiplier(multiplier)}
             </p>

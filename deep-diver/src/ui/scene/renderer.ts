@@ -81,6 +81,13 @@ export class SceneRenderer {
   private snow: Snow[] = [];
   private labels: FloatingLabel[] = [];
   private ascending: AscendingDiver[] = [];
+  /** Éclats de lumière (cash-out réussi). */
+  private flashes: { x: number; y: number; age: number; hue: number }[] = [];
+  /** Respecte la préférence système « réduire les animations ». */
+  private reducedMotion =
+    typeof window !== "undefined" && window.matchMedia
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false;
 
   private prevDepth = 0;
   private descentSpeed = 0; // m/s lissée
@@ -115,11 +122,13 @@ export class SceneRenderer {
           color: "#6ee7b7",
         });
         this.ascending.push({ x: x + (Math.random() - 0.5) * 30, y, age: 0 });
-        this.burstBubbles(x, y, 14);
+        // Éclat de lumière + belle gerbe de bulles ascendantes (récompense).
+        this.flashes.push({ x, y, age: 0, hue: 165 });
+        this.burstBubbles(x, y, this.reducedMotion ? 10 : 26);
       } else if (e.type === "crashed") {
         this.crashAge = 0;
-        this.shake = 1;
-        this.burstBubbles(this.width / 2, this.height * this.diverYRatio, 40);
+        this.shake = this.reducedMotion ? 0 : 1;
+        this.burstBubbles(this.width / 2, this.height * this.diverYRatio, this.reducedMotion ? 14 : 40);
       } else if (e.type === "phaseChanged" && e.phase === "BETTING") {
         this.crashAge = Number.POSITIVE_INFINITY;
       }
@@ -137,6 +146,33 @@ export class SceneRenderer {
         alpha: 0.9,
       });
     }
+  }
+
+  /** Éclats de lumière additifs (cash-out) : halo qui s'épanouit et s'efface. */
+  private updateAndDrawFlashes(ctx: CanvasRenderingContext2D, dt: number): void {
+    const LIFE = 0.7;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (let i = this.flashes.length - 1; i >= 0; i--) {
+      const f = this.flashes[i];
+      f.age += dt;
+      if (f.age > LIFE) {
+        this.flashes.splice(i, 1);
+        continue;
+      }
+      const t = f.age / LIFE;
+      const radius = 30 + t * 150;
+      const alpha = (1 - t) * 0.6;
+      const grad = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, radius);
+      grad.addColorStop(0, `hsla(${f.hue}, 90%, 80%, ${alpha})`);
+      grad.addColorStop(0.5, `hsla(${f.hue}, 90%, 70%, ${alpha * 0.4})`);
+      grad.addColorStop(1, `hsla(${f.hue}, 90%, 70%, 0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(f.x, f.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   private resize(): void {
@@ -192,6 +228,7 @@ export class SceneRenderer {
     this.updateAndDrawSnow(ctx, w, h, dt, scroll, depth);
     this.updateAndDrawFauna(ctx, w, h, dt, depth);
     this.updateAndDrawBubbles(ctx, dt, scroll);
+    this.updateAndDrawFlashes(ctx, dt);
 
     const diverX = w / 2;
     const diverY = h * this.diverYRatio;

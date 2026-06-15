@@ -466,9 +466,11 @@ export class SoundManager {
     this.blip(440, 280, 0.12, "triangle", 0.14);
   }
 
-  /** Remontée réussie : souffle de soulagement + petit arpège clair. */
+  /** Remontée réussie : « pop » agréable + souffle de soulagement + arpège. */
   cashout(): void {
     if (!this.ctx) return;
+    // Petit « pop » immédiat (game feel) : montée rapide et douce.
+    this.blip(420, 920, 0.09, "sine", 0.22);
     // Souffle de soulagement (on respire enfin) : échantillon réel ou synthèse.
     if (!this.playSample("relief", 0.8)) {
       this.breath({ dur: 0.9, peak: 0.16, kind: "inhale" });

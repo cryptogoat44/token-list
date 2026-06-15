@@ -43,6 +43,24 @@ interface Toast {
 
 let toastId = 0;
 
+/** Préférence système « réduire les animations » (accessibilité). */
+function prefersReducedMotion(): boolean {
+  return typeof window !== "undefined" && !!window.matchMedia
+    ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    : false;
+}
+
+/** Vibration mobile discrète si disponible (et hors réduction d'animations). */
+function vibrate(pattern: number | number[]): void {
+  if (typeof navigator !== "undefined" && navigator.vibrate && !prefersReducedMotion()) {
+    try {
+      navigator.vibrate(pattern);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
 export default function App() {
   const { engine, snapshot, onEvents, clock } = useEngine();
   const profileApi = useProfile(engine);
@@ -122,6 +140,7 @@ export default function App() {
             break;
           case "cashedOut":
             sound.cashout();
+            vibrate(diveTier(e.multiplier).celebrate ? [25, 40, 25] : 30);
             pushToast(
               `Panier ${e.slot + 1} : +${formatCredits(e.winCents)} crédits (à ${formatMultiplier(e.multiplier)})`,
               "win",

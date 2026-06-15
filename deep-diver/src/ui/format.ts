@@ -26,6 +26,32 @@ export function shortSeed(seed: string, head = 8, tail = 4): string {
   return `${seed.slice(0, head)}…${seed.slice(-tail)}`;
 }
 
+/**
+ * Couleur du multiplicateur qui évolue DOUCEMENT avec la profondeur :
+ * cyan en surface → émeraude → violet en profondeur → or pour les abysses.
+ * Renvoie une couleur HSL prête à l'emploi.
+ */
+export function multiplierColor(m: number): string {
+  const l = Math.max(0, Math.log10(Math.max(1, m))); // 0 → 1x, 1 → 10x, 2 → 100x
+  const stops: [number, number][] = [
+    [0, 188], // cyan (surface)
+    [0.3, 160], // émeraude (~2x)
+    [1, 265], // violet (~10x)
+    [2, 45], // or (~100x)
+  ];
+  let hue = stops[stops.length - 1][1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [l0, h0] = stops[i];
+    const [l1, h1] = stops[i + 1];
+    if (l <= l1) {
+      const t = (l - l0) / (l1 - l0);
+      hue = h0 + (h1 - h0) * Math.max(0, Math.min(1, t));
+      break;
+    }
+  }
+  return `hsl(${Math.round(hue)}, 85%, 74%)`;
+}
+
 /** Couleur d'un chip d'historique selon le multiplicateur. */
 export function crashColorClass(x: number): string {
   if (x < 1.2) return "text-red-300 bg-red-500/15 ring-red-400/30";
