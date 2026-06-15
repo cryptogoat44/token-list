@@ -23,6 +23,7 @@ import { DiveScene } from "./scene/DiveScene";
 import { SoundManager } from "./sound";
 import { readStoredMuted, storeMuted, useEngine } from "./useEngine";
 import { useProfile } from "./useProfile";
+import { useSettings } from "./useSettings";
 import { ProfileModal } from "./components/ProfileModal";
 import { ACHIEVEMENT_BY_ID } from "../engine/achievements";
 import { cosmeticById } from "../engine/cosmetics";
@@ -66,6 +67,7 @@ function vibrate(pattern: number | number[]): void {
 export default function App() {
   const { engine, snapshot, onEvents, clock } = useEngine();
   const profileApi = useProfile(engine);
+  const { settings, update: updateSettings } = useSettings();
   const soundRef = useRef<SoundManager | null>(null);
   if (soundRef.current === null) {
     soundRef.current = new SoundManager(readStoredMuted());
@@ -119,6 +121,29 @@ export default function App() {
       });
     });
   }, [profileApi, pushToast]);
+
+  // Ambiance relaxante optionnelle.
+  useEffect(() => {
+    sound.setRelax(settings.relaxAmbiance);
+  }, [settings.relaxAmbiance, sound]);
+
+  // Rappel de pause DOUX : optionnel, non culpabilisant, non répété en boucle.
+  useEffect(() => {
+    if (settings.sessionReminderMin <= 0) return;
+    const start = Date.now();
+    let lastK = 0;
+    const id = setInterval(() => {
+      const k = Math.floor((Date.now() - start) / 60000 / settings.sessionReminderMin);
+      if (k > lastK) {
+        lastK = k;
+        pushToast(
+          `Tu plonges depuis ${k * settings.sessionReminderMin} min — pense à une pause si tu en as envie 🫧`,
+          "info",
+        );
+      }
+    }, 30000);
+    return () => clearInterval(id);
+  }, [settings.sessionReminderMin, pushToast]);
 
   // ── Réactions aux événements du moteur (sons, toasts, annonce ARIA) ──────
   useEffect(() => {
@@ -296,7 +321,14 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100" onPointerDown={unlockAudio}>
       <FakeMoneyBanner />
 
-      {profileOpen && <ProfileModal api={profileApi} onClose={() => setProfileOpen(false)} />}
+      {profileOpen && (
+        <ProfileModal
+          api={profileApi}
+          settings={settings}
+          onUpdateSettings={updateSettings}
+          onClose={() => setProfileOpen(false)}
+        />
+      )}
 
       {/* Annonces pour lecteurs d'écran */}
       <p className="sr-only" role="status" aria-live="polite">
@@ -367,10 +399,31 @@ export default function App() {
 
         <HistoryBar history={snapshot.history} onSelectRound={handleSelectRound} />
 
+        {/* Transparence permanente : RTP, avantage maison, imprévisibilité. */}
+        <p className="-mt-1 text-[11px] text-slate-500">
+          <span className="rounded bg-slate-800/60 px-1.5 py-0.5 font-mono text-cyan-300/90">
+            RTP {(100 - engine.config.houseEdge * 100).toFixed(0)} % · avantage maison{" "}
+            {(engine.config.houseEdge * 100).toFixed(0)} %
+          </span>{" "}
+          — équitable et vérifiable, mais <strong className="text-slate-400">impossible de
+          prédire la prochaine syncope</strong>.
+        </p>
+
         <main className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="flex min-w-0 flex-col gap-4">
             <div className="relative">
               <DiveScene engine={engine} snapshot={snapshot} suitColor={suitColor} trailColor={trailColor} />
+              {/* Transparence séduisante : vérifier le tour qui vient de finir. */}
+              {(snapshot.phase === "CRASH" || snapshot.phase === "RESULT") && snapshot.history[0] && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectRound(snapshot.history[0])}
+                  className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full border border-cyan-400/40 bg-slate-950/80 px-3 py-1.5 text-xs font-semibold text-cyan-200 backdrop-blur transition hover:bg-slate-900 active:scale-95"
+                  title="Recalculer le point de crash de ce tour et confirmer qu'il était équitable"
+                >
+                  🔍 Vérifier ce tour
+                </button>
+              )}
               {/* Toasts au-dessus de la scène */}
               <div className="pointer-events-none absolute right-3 top-3 flex w-64 flex-col gap-2">
                 {toasts.map((t) => (

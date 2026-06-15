@@ -505,6 +505,51 @@ export class SoundManager {
     this.blip(880, 880, 0.05, "square", 0.05);
   }
 
+  private relaxNodes: AudioNode[] = [];
+
+  /** Nappe sonore relaxante optionnelle (accord doux et grave, très discret). */
+  setRelax(on: boolean): void {
+    if (!this.ctx || !this.master) return;
+    if (on && this.relaxNodes.length === 0) {
+      const ctx = this.ctx;
+      const g = ctx.createGain();
+      g.gain.value = 0.045;
+      const lp = ctx.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = 520;
+      g.connect(lp).connect(this.master);
+      // Lente respiration de la nappe (LFO).
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.06;
+      const lfoG = ctx.createGain();
+      lfoG.gain.value = 0.02;
+      lfo.connect(lfoG).connect(g.gain);
+      lfo.start();
+      this.relaxNodes.push(g, lp, lfo, lfoG);
+      for (const f of [110, 164.81, 220]) {
+        const o = ctx.createOscillator();
+        o.type = "sine";
+        o.frequency.value = f;
+        const og = ctx.createGain();
+        og.gain.value = 0.4;
+        o.connect(og).connect(g);
+        o.start();
+        this.relaxNodes.push(o, og);
+      }
+    } else if (!on && this.relaxNodes.length > 0) {
+      this.relaxNodes.forEach((n) => {
+        if (n instanceof OscillatorNode) {
+          try {
+            n.stop();
+          } catch {
+            /* déjà arrêté */
+          }
+        }
+      });
+      this.relaxNodes = [];
+    }
+  }
+
   dispose(): void {
     this.stopBreathing();
     this.stopBreathHold();

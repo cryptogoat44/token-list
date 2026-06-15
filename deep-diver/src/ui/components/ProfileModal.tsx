@@ -8,14 +8,17 @@ import { ACHIEVEMENTS } from "../../engine/achievements";
 import { COSMETICS, type CosmeticSlot } from "../../engine/cosmetics";
 import type { PlayerProfile } from "../../engine/profile";
 import type { UseProfileResult } from "../useProfile";
+import type { AppSettings } from "../useSettings";
 import { formatCredits, formatDepth, formatMultiplier } from "../format";
 
 interface Props {
   api: UseProfileResult;
+  settings: AppSettings;
+  onUpdateSettings: (patch: Partial<AppSettings>) => void;
   onClose: () => void;
 }
 
-type Section = "carnet" | "succes" | "apparence";
+type Section = "carnet" | "succes" | "apparence" | "reglages";
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
@@ -26,7 +29,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function ProfileModal({ api, onClose }: Props) {
+export function ProfileModal({ api, settings, onUpdateSettings, onClose }: Props) {
   const { profile } = api;
   const [section, setSection] = useState<Section>("carnet");
   const [nameDraft, setNameDraft] = useState(profile.diverName);
@@ -89,12 +92,16 @@ export function ProfileModal({ api, onClose }: Props) {
           {tab("carnet", "Records")}
           {tab("succes", "Succès")}
           {tab("apparence", "Apparence")}
+          {tab("reglages", "Réglages")}
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-4 [scrollbar-width:thin]">
           {section === "carnet" && <CarnetSection profile={profile} />}
           {section === "succes" && <SuccesSection profile={profile} />}
           {section === "apparence" && <ApparenceSection api={api} />}
+          {section === "reglages" && (
+            <ReglagesSection settings={settings} onUpdate={onUpdateSettings} />
+          )}
         </div>
       </div>
     </div>
@@ -189,6 +196,75 @@ function SuccesSection({ profile }: { profile: PlayerProfile }) {
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+function ReglagesSection({
+  settings,
+  onUpdate,
+}: {
+  settings: AppSettings;
+  onUpdate: (patch: Partial<AppSettings>) => void;
+}) {
+  const toggle = (
+    label: string,
+    desc: string,
+    checked: boolean,
+    onChange: (v: boolean) => void,
+  ) => (
+    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-cyan-400/10 bg-slate-950/50 px-3 py-2.5">
+      <input
+        type="checkbox"
+        className="mt-0.5 h-4 w-4 accent-cyan-400"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span>
+        <span className="block text-sm text-slate-200">{label}</span>
+        <span className="block text-[11px] text-slate-500">{desc}</span>
+      </span>
+    </label>
+  );
+  return (
+    <div className="flex flex-col gap-3">
+      {toggle(
+        "Réduire les animations",
+        "Coupe les effets animés. (La préférence système est aussi respectée.)",
+        settings.reduceMotion,
+        (v) => onUpdate({ reduceMotion: v }),
+      )}
+      {toggle(
+        "Ambiance sonore relaxante",
+        "Une nappe douce et grave, sous le souffle, pour une plongée plus calme.",
+        settings.relaxAmbiance,
+        (v) => onUpdate({ relaxAmbiance: v }),
+      )}
+      <div className="rounded-xl border border-cyan-400/10 bg-slate-950/50 px-3 py-2.5">
+        <label htmlFor="reminder" className="block text-sm text-slate-200">
+          Rappel de pause
+        </label>
+        <select
+          id="reminder"
+          value={settings.sessionReminderMin}
+          onChange={(e) => onUpdate({ sessionReminderMin: Number(e.target.value) })}
+          className="mt-1.5 w-full rounded-lg border border-cyan-400/20 bg-slate-900 px-2 py-1.5 text-sm text-cyan-50 outline-none focus:border-cyan-400/60"
+        >
+          <option value={0}>Désactivé</option>
+          <option value={15}>Toutes les 15 minutes</option>
+          <option value={30}>Toutes les 30 minutes</option>
+          <option value={60}>Toutes les 60 minutes</option>
+        </select>
+        <p className="mt-1 text-[11px] text-slate-500">
+          Un message discret, jamais bloquant — pour décider en conscience, pas pour culpabiliser.
+        </p>
+      </div>
+      <p className="rounded-xl border border-amber-400/20 bg-amber-500/5 p-3 text-[11px] leading-relaxed text-amber-200/80">
+        Même en argent fictif, ce format reflète un jeu de hasard à <strong>perte attendue</strong>{" "}
+        (avantage maison 3 %) : sur la durée, on perd en moyenne. Aucune stratégie ne prédit la
+        syncope. Besoin d'en parler ? Joueurs Info Service — 09&nbsp;74&nbsp;75&nbsp;13&nbsp;13
+        (non surtaxé).
+      </p>
     </div>
   );
 }

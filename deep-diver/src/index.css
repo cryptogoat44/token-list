@@ -41,7 +41,7 @@
   }
 }
 
-/* Accessibilité : couper les animations si l'utilisateur le demande. */
+/* Accessibilité : couper les animations (préférence système OU réglage in-app). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -53,6 +53,16 @@
   .breathe {
     animation: none !important;
   }
+}
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+.reduce-motion .breathe {
+  animation: none !important;
 }
 
 /* Apparition « pop » de la bannière de célébration d'un gros multiplicateur. */
