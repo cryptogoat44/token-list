@@ -12,15 +12,21 @@ import { SceneRenderer } from "./renderer";
 interface Props {
   engine: GameEngine;
   snapshot: EngineSnapshot;
+  /** Couleurs des cosmétiques sélectionnés (combinaison, traînée de bulles). */
+  suitColor: string;
+  trailColor: string;
 }
 
-export function DiveScene({ engine, snapshot }: Props) {
+export function DiveScene({ engine, snapshot, suitColor, trailColor }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rendererRef = useRef<SceneRenderer | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const renderer = new SceneRenderer(canvas);
+    rendererRef.current = renderer;
+    renderer.setCosmetics(suitColor, trailColor);
     const unsubscribe = engine.subscribe((_snap, events) => {
       if (events.length > 0) renderer.onEvents(events);
     });
@@ -33,8 +39,15 @@ export function DiveScene({ engine, snapshot }: Props) {
     return () => {
       cancelAnimationFrame(raf);
       unsubscribe();
+      rendererRef.current = null;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine]);
+
+  // Met à jour les cosmétiques à chaud quand le joueur en change.
+  useEffect(() => {
+    rendererRef.current?.setCosmetics(suitColor, trailColor);
+  }, [suitColor, trailColor]);
 
   const { phase, multiplier, depthMeters, bettingEndsAt, now } = snapshot;
   const countdown = Math.max(0, (bettingEndsAt - now) / 1000);

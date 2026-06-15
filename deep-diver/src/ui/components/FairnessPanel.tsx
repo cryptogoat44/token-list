@@ -19,12 +19,14 @@ interface Props {
   selectedRound: RoundHistoryEntry | null;
   /** Mode lobby partagé : graine publique déterministe, clientSeed non éditable. */
   shared?: boolean;
+  /** Appelé quand une vérification réussit (débloque le succès « vérificateur »). */
+  onVerified?: () => void;
 }
 
 const fieldCls =
   "w-full rounded-lg border border-cyan-400/20 bg-slate-950/70 px-2.5 py-1.5 font-mono text-xs text-cyan-50 outline-none focus:border-cyan-400/60";
 
-export function FairnessPanel({ engine, snapshot, selectedRound, shared }: Props) {
+export function FairnessPanel({ engine, snapshot, selectedRound, shared, onVerified }: Props) {
   const [seedDraft, setSeedDraft] = useState(snapshot.round.clientSeed);
   const [seedApplied, setSeedApplied] = useState(false);
 
@@ -61,6 +63,7 @@ export function FairnessPanel({ engine, snapshot, selectedRound, shared }: Props
           : undefined,
       });
       setVerification(result);
+      if (result.ok) onVerified?.();
     } finally {
       setVerifying(false);
     }

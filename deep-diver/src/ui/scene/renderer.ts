@@ -15,6 +15,14 @@ interface Bubble {
   vy: number;
   wobble: number;
   alpha: number;
+  /** Couleur hex optionnelle (traînée du plongeur / cash-out). */
+  color?: string;
+}
+
+/** Convertit un hex (#rrggbb) en rgba avec alpha. */
+function hexA(hex: string, alpha: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
 }
 
 interface Fish {
@@ -89,6 +97,15 @@ export class SceneRenderer {
       ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
       : false;
 
+  /** Cosmétiques sélectionnés (combinaison + traînée de bulles). */
+  private suitColor = "#16243d";
+  private trailColor = "#bfe9ff";
+
+  setCosmetics(suitColor: string, trailColor: string): void {
+    this.suitColor = suitColor;
+    this.trailColor = trailColor;
+  }
+
   private prevDepth = 0;
   private descentSpeed = 0; // m/s lissée
   private time = 0;
@@ -124,7 +141,7 @@ export class SceneRenderer {
         this.ascending.push({ x: x + (Math.random() - 0.5) * 30, y, age: 0 });
         // Éclat de lumière + belle gerbe de bulles ascendantes (récompense).
         this.flashes.push({ x, y, age: 0, hue: 165 });
-        this.burstBubbles(x, y, this.reducedMotion ? 10 : 26);
+        this.burstBubbles(x, y, this.reducedMotion ? 10 : 26, this.trailColor);
       } else if (e.type === "crashed") {
         this.crashAge = 0;
         this.shake = this.reducedMotion ? 0 : 1;
@@ -135,7 +152,7 @@ export class SceneRenderer {
     }
   }
 
-  private burstBubbles(x: number, y: number, count: number): void {
+  private burstBubbles(x: number, y: number, count: number, color?: string): void {
     for (let i = 0; i < count; i++) {
       this.bubbles.push({
         x: x + (Math.random() - 0.5) * 50,
@@ -144,6 +161,7 @@ export class SceneRenderer {
         vy: 40 + Math.random() * 90,
         wobble: Math.random() * Math.PI * 2,
         alpha: 0.9,
+        color,
       });
     }
   }
@@ -491,7 +509,9 @@ export class SceneRenderer {
         this.bubbles.splice(i, 1);
         continue;
       }
-      ctx.strokeStyle = `rgba(210, 240, 255, ${Math.max(0, b.alpha) * 0.8})`;
+      ctx.strokeStyle = b.color
+        ? hexA(b.color, Math.max(0, b.alpha) * 0.85)
+        : `rgba(210, 240, 255, ${Math.max(0, b.alpha) * 0.8})`;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
@@ -511,7 +531,7 @@ export class SceneRenderer {
     const phase = snapshot.phase;
     const crashed = phase === "CRASH" || (phase === "RESULT" && this.crashAge < 6);
 
-    // Émission régulière de bulles pendant la descente.
+    // Émission régulière de bulles pendant la descente (couleur = traînée).
     if (phase === "DIVING" && Math.random() < 0.25) {
       this.bubbles.push({
         x: x + (Math.random() - 0.5) * 10,
@@ -520,6 +540,7 @@ export class SceneRenderer {
         vy: 30 + Math.random() * 50,
         wobble: Math.random() * Math.PI * 2,
         alpha: 0.8,
+        color: this.trailColor,
       });
     }
 
@@ -542,7 +563,7 @@ export class SceneRenderer {
     }
 
     const kick = Math.sin(this.time * (phase === "DIVING" ? 7 : 2.5));
-    const suit = "#16243d";
+    const suit = this.suitColor;
     const rim = crashed ? "rgba(255, 120, 120, 0.85)" : "rgba(110, 231, 255, 0.85)";
 
     ctx.lineWidth = 1.6;

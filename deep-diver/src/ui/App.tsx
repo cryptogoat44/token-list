@@ -23,7 +23,9 @@ import { DiveScene } from "./scene/DiveScene";
 import { SoundManager } from "./sound";
 import { readStoredMuted, storeMuted, useEngine } from "./useEngine";
 import { useProfile } from "./useProfile";
+import { ProfileModal } from "./components/ProfileModal";
 import { ACHIEVEMENT_BY_ID } from "../engine/achievements";
+import { cosmeticById } from "../engine/cosmetics";
 
 type SideTab = "live" | "chat" | "stats" | "fair" | "streams";
 
@@ -71,6 +73,7 @@ export default function App() {
   const sound = soundRef.current;
 
   const [muted, setMuted] = useState(sound.muted);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [tab, setTab] = useState<SideTab>("live");
   const [betCents0, setBetCents0] = useState(1_000);
   const [betCents1, setBetCents1] = useState(1_000);
@@ -95,6 +98,10 @@ export default function App() {
   const roundId = snapshot.round.roundId;
   const bettors = useMemo<FakeBettor[]>(() => generateRoundBettors(roundId), [roundId]);
   const onlineCount = useMemo(() => onlineCountForRound(roundId), [roundId]);
+
+  // Couleurs des cosmétiques sélectionnés (apparence du plongeur).
+  const suitColor = cosmeticById(profileApi.profile.selectedCosmetics.suit)?.color ?? "#16243d";
+  const trailColor = cosmeticById(profileApi.profile.selectedCosmetics.trail)?.color ?? "#bfe9ff";
 
   const pushToast = useCallback((text: string, kind: Toast["kind"]) => {
     const id = ++toastId;
@@ -289,6 +296,8 @@ export default function App() {
     <div className="min-h-screen bg-slate-950 text-slate-100" onPointerDown={unlockAudio}>
       <FakeMoneyBanner />
 
+      {profileOpen && <ProfileModal api={profileApi} onClose={() => setProfileOpen(false)} />}
+
       {/* Annonces pour lecteurs d'écran */}
       <p className="sr-only" role="status" aria-live="polite">
         {announcement}
@@ -337,6 +346,15 @@ export default function App() {
             </button>
             <button
               type="button"
+              onClick={() => setProfileOpen(true)}
+              aria-label="Ouvrir le carnet du plongeur"
+              className="flex items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-slate-900/80 px-3 py-2.5 text-sm font-bold text-cyan-100 transition hover:bg-slate-800 active:scale-95"
+            >
+              <span aria-hidden="true">📖</span>
+              <span className="hidden sm:inline">Carnet</span>
+            </button>
+            <button
+              type="button"
               onClick={toggleMute}
               aria-label={muted ? "Activer le son" : "Couper le son"}
               aria-pressed={muted}
@@ -352,7 +370,7 @@ export default function App() {
         <main className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="flex min-w-0 flex-col gap-4">
             <div className="relative">
-              <DiveScene engine={engine} snapshot={snapshot} />
+              <DiveScene engine={engine} snapshot={snapshot} suitColor={suitColor} trailColor={trailColor} />
               {/* Toasts au-dessus de la scène */}
               <div className="pointer-events-none absolute right-3 top-3 flex w-64 flex-col gap-2">
                 {toasts.map((t) => (
@@ -403,6 +421,8 @@ export default function App() {
                 onBetCentsChange={setBetCents0}
                 onInteract={unlockAudio}
                 clock={clock}
+                presets={profileApi.presets}
+                onSavePreset={profileApi.savePreset}
               />
               <BetPanel
                 engine={engine}
@@ -412,6 +432,8 @@ export default function App() {
                 onBetCentsChange={setBetCents1}
                 onInteract={unlockAudio}
                 clock={clock}
+                presets={profileApi.presets}
+                onSavePreset={profileApi.savePreset}
               />
             </div>
           </div>
@@ -446,7 +468,7 @@ export default function App() {
                 />
               )}
               {tab === "fair" && (
-                <FairnessPanel engine={engine} snapshot={snapshot} selectedRound={selectedRound} shared />
+                <FairnessPanel engine={engine} snapshot={snapshot} selectedRound={selectedRound} shared onVerified={profileApi.notifyVerified} />
               )}
             </div>
           </aside>

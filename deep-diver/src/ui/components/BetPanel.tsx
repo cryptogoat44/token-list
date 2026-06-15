@@ -7,6 +7,7 @@ import { useState } from "react";
 import type { GameEngine } from "../../engine/engine";
 import type { EngineSnapshot, SlotState } from "../../engine/types";
 import { clampBet } from "../../engine/wallet";
+import { reachProbabilityPct, type CashoutPreset } from "../../engine/presets";
 import { formatCredits, formatMultiplier } from "../format";
 
 interface Props {
@@ -19,6 +20,10 @@ interface Props {
   onInteract: () => void;
   /** Horloge du moteur (murale en lobby partagé). */
   clock: () => number;
+  /** Présets d'auto cash-out (avec proba honnête). */
+  presets: CashoutPreset[];
+  /** Sauvegarde la cible courante comme préset. */
+  onSavePreset: (name: string, multiplier: number) => void;
 }
 
 const REASON_LABELS: Record<string, string> = {
@@ -43,6 +48,8 @@ export function BetPanel({
   onBetCentsChange,
   onInteract,
   clock,
+  presets,
+  onSavePreset,
 }: Props) {
   const slotState: SlotState = snapshot.slots[slot];
   const [error, setError] = useState<string | null>(null);
@@ -265,33 +272,76 @@ export function BetPanel({
         </p>
       )}
 
-      {/* Auto cash out */}
-      <div className="flex items-center gap-2 rounded-lg border border-cyan-400/10 bg-slate-950/40 px-3 py-2">
-        <input
-          id={`auto-cashout-${slot}`}
-          type="checkbox"
-          className="h-4 w-4 accent-cyan-400"
-          checked={autoCashoutOn}
-          onChange={(e) => {
-            onInteract();
-            setAutoCashoutOn(e.target.checked);
-            applyAutoCashout(e.target.checked, autoCashoutX);
-          }}
-        />
-        <label htmlFor={`auto-cashout-${slot}`} className="flex-1 text-xs text-slate-300">
-          Remontée auto à
-        </label>
-        <input
-          aria-label={`Multiplicateur de remontée automatique du panier ${slot + 1}`}
-          className={inputCls + " max-w-20 py-1 text-center text-xs"}
-          inputMode="decimal"
-          value={autoCashoutX}
-          onChange={(e) => {
-            setAutoCashoutX(e.target.value);
-            applyAutoCashout(autoCashoutOn, e.target.value);
-          }}
-        />
-        <span className="text-xs text-slate-400">x</span>
+      {/* Auto cash out + présets honnêtes (proba réelle affichée) */}
+      <div className="rounded-lg border border-cyan-400/10 bg-slate-950/40 px-3 py-2">
+        <div className="flex items-center gap-2">
+          <input
+            id={`auto-cashout-${slot}`}
+            type="checkbox"
+            className="h-4 w-4 accent-cyan-400"
+            checked={autoCashoutOn}
+            onChange={(e) => {
+              onInteract();
+              setAutoCashoutOn(e.target.checked);
+              applyAutoCashout(e.target.checked, autoCashoutX);
+            }}
+          />
+          <label htmlFor={`auto-cashout-${slot}`} className="flex-1 text-xs text-slate-300">
+            Remontée auto à
+          </label>
+          <input
+            aria-label={`Multiplicateur de remontée automatique du panier ${slot + 1}`}
+            className={inputCls + " max-w-20 py-1 text-center text-xs"}
+            inputMode="decimal"
+            value={autoCashoutX}
+            onChange={(e) => {
+              setAutoCashoutX(e.target.value);
+              applyAutoCashout(autoCashoutOn, e.target.value);
+            }}
+          />
+          <span className="text-xs text-slate-400">x</span>
+        </div>
+        {(() => {
+          const m = Number.parseFloat(autoCashoutX.replace(",", "."));
+          if (!Number.isFinite(m) || m <= 1) return null;
+          return (
+            <p className="mt-1 text-[10px] text-slate-500">
+              Probabilité d'atteindre {formatMultiplier(m)} :{" "}
+              <span className="font-mono text-cyan-300">{reachProbabilityPct(m)} %</span> —
+              impossible de prédire le tour.
+            </p>
+          );
+        })()}
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {presets.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              title={`${p.name} — ${reachProbabilityPct(p.multiplier)} % d'atteindre ${formatMultiplier(p.multiplier)}`}
+              onClick={() => {
+                onInteract();
+                setAutoCashoutOn(true);
+                setAutoCashoutX(p.multiplier.toFixed(2));
+                applyAutoCashout(true, String(p.multiplier));
+              }}
+              className="rounded-md border border-cyan-400/15 bg-slate-800/70 px-2 py-1 text-[11px] text-cyan-100 transition hover:border-cyan-400/40"
+            >
+              {p.name} <span className="font-mono text-slate-400">{formatMultiplier(p.multiplier)}</span>
+              <span className="text-emerald-300/80"> · {reachProbabilityPct(p.multiplier)}%</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            title="Enregistrer la cible courante comme préset"
+            onClick={() => {
+              const m = Number.parseFloat(autoCashoutX.replace(",", "."));
+              if (Number.isFinite(m) && m >= 1.01) onSavePreset(`${Math.floor(m * 100) / 100}x`, m);
+            }}
+            className="rounded-md border border-cyan-400/15 bg-slate-800/40 px-2 py-1 text-[11px] text-slate-300 transition hover:border-cyan-400/40"
+          >
+            ＋ préset
+          </button>
+        </div>
       </div>
 
       {/* Pari automatique */}
