@@ -1,0 +1,18 @@
+{
+  "name": "@deep-diver/rgs-server",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Deep Diver — Remote Game Server (serveur-autoritaire, certifiable). Cœur RNG + modèle mathématique audité.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  }
+}
