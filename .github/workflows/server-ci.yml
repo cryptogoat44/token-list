@@ -1,0 +1,30 @@
+# CI du Remote Game Server : type-check + tests du cœur audité (RNG, math, jeu).
+name: RGS Server CI
+
+on:
+  push:
+    branches:
+      - main
+      - claude/rgs-server-authoritative
+    paths:
+      - "server/**"
+      - ".github/workflows/server-ci.yml"
+  pull_request:
+    paths:
+      - "server/**"
+      - ".github/workflows/server-ci.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run build
+      - run: npm test
