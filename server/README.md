@@ -4,10 +4,11 @@ Serveur **autoritaire** et **certifiable** de Deep Diver. Le client n'est qu'un
 afficheur ; **aucun** résultat, multiplicateur ou point de crash n'est décidé
 côté client.
 
-> État : **étapes 1 → 3c** du chantier RGS — cœur **RNG + modèle mathématique
-> audité**, **machine à états du tour**, **passerelle WebSocket** temps réel et
-> **protocole partagé** avec un client web **bi-mode**. Les modules wallet,
-> journal d'audit et conformité arrivent aux étapes suivantes.
+> État : **étapes 1 → 4** du chantier RGS — cœur **RNG + modèle mathématique
+> audité**, **machine à états du tour**, **passerelle WebSocket** temps réel,
+> **protocole partagé** (client web **bi-mode**) et **API wallet seamless**
+> (contrat opérateur + mock idempotent). Le journal d'audit et la conformité
+> arrivent aux étapes suivantes.
 
 ## Modules audités
 
@@ -20,6 +21,9 @@ côté client.
 | `src/game/round.ts` · `engine.ts` | Machine à états autoritaire (BETTING → RUNNING → CRASH → SETTLEMENT). |
 | `src/realtime/gateway.ts` | Passerelle WebSocket : diffuse l'état public, reçoit les intentions (horodatage **serveur**). |
 | `../shared/protocol.ts` | **Source unique** du protocole de fil, partagée avec le client web. |
+| `src/wallet/types.ts` | Contrat **wallet seamless** (authenticate/getBalance/debit/credit/rollback). |
+| `src/wallet/mockWalletAdapter.ts` | Implémentation mémoire idempotente (monnaie fictive, démo/tests). |
+| `src/wallet/walletService.ts` | Traduit mise/encaissement/règlement → appels wallet (txId déterministes). |
 
 ## RNG & équité
 
@@ -40,6 +44,27 @@ côté client.
 défaut, **configurable côté serveur**, plafond **1 000 000x**. Le RTP est
 constant à toute cible (`m · P(crash ≥ m) = 1 − edge`). Les tours instantanés
 (`1.00x`, ≈ 3,96 %) matérialisent l'avantage maison.
+
+## Wallet « seamless » (étape 4)
+
+Modèle de l'industrie : l'**opérateur** licencié détient les fonds, le KYC et la
+licence ; le RGS ne stocke **aucun** solde réel et **appelle** l'API wallet de
+l'opérateur à chaque mouvement. Le studio fournit le contenu, l'opérateur porte
+l'argent.
+
+- **Contrat** (`WalletAdapter`) : `authenticate` · `getBalance` · `debit` ·
+  `credit` · `rollback`. Un opérateur fournit son propre adaptateur ; le RGS est
+  agnostique au PSP réel.
+- **Idempotence** : chaque mouvement porte un `txId` **déterministe**
+  (`r{roundId}:b{betId}:stake` / `:payout`) ; rejouer une opération ne double
+  jamais l'effet (réseau peu fiable, rejeux). `rollback` compense par `txId`.
+- **Sécurité argent** : centimes entiers, devise vérifiée à chaque appel, jamais
+  de flottant. La démo utilise une devise **fictive** (`FUN`).
+
+**Points d'intégration au temps réel** (orchestration à venir avec l'audit) :
+`debitStake` à l'acceptation d'une mise (refus si fonds insuffisants) →
+`WalletService.settle()` sur l'événement `settled` du moteur pour créditer les
+gagnants (les perdants ne génèrent aucun appel, le débit ayant eu lieu au pari).
 
 ## Protocole partagé & client bi-mode
 
