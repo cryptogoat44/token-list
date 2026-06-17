@@ -4,13 +4,24 @@ Serveur **autoritaire** et **certifiable** de Deep Diver. Le client n'est qu'un
 afficheur ; **aucun** résultat, multiplicateur ou point de crash n'est décidé
 côté client.
 
-> État : **étapes 1 → 7** du chantier RGS — cœur **RNG + modèle mathématique
-> audité**, **machine à états du tour**, **passerelle WebSocket** temps réel,
-> **protocole partagé** (client web **bi-mode**), **API wallet seamless**,
-> **journal d'audit infalsifiable** (chaîné par hash, rejouable), **conformité
-> par juridiction / jeu responsable** (geo-gating, **France bloquée par défaut**)
-> et **banc de simulation** (rapport du modèle mathématique sur 1 M de tours).
-> Reste la documentation finale (dossier de certification).
+> État : **étapes 1 → 8 complètes** — cœur **RNG + modèle mathématique audité**,
+> **machine à états du tour**, **passerelle WebSocket** temps réel, **protocole
+> partagé** (client web **bi-mode**), **API wallet seamless**, **journal d'audit
+> infalsifiable** (chaîné par hash, rejouable), **conformité par juridiction /
+> jeu responsable** (geo-gating, **France bloquée par défaut**), **banc de
+> simulation** (rapport sur 1 M de tours) et **dossier de documentation**.
+
+## Documentation
+
+| Document | Contenu |
+| --- | --- |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture serveur-autoritaire, composants, flux, déploiement. |
+| [docs/GAME-RULES.md](docs/GAME-RULES.md) | Règles du jeu, phases, RTP, plafond, encaissement. |
+| [docs/RNG.md](docs/RNG.md) | RNG provably-fair : graines, commit-reveal, dérivation. |
+| [docs/VERIFY.md](docs/VERIFY.md) | Guide de vérification indépendante (exemple reproductible). |
+| [docs/AUDIT.md](docs/AUDIT.md) | Schéma du journal d'audit, types d'événements, endpoints, rejouabilité. |
+| [docs/math-model.md](docs/math-model.md) | Rapport du modèle mathématique (1 M de tours). |
+| [docs/CERTIFICATION.md](docs/CERTIFICATION.md) | Cartographie vers les exigences de certification (GLI/iTech). |
 
 ## Modules audités
 
