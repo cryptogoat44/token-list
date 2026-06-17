@@ -20,6 +20,9 @@ import type { RoundSettlement, RoundSnapshot } from "../game/types";
 import type { AuditLogger } from "../audit/auditLogger";
 import { WalletService } from "../wallet/walletService";
 import type { WalletContext } from "../wallet/types";
+import type { ComplianceService } from "../compliance/complianceService";
+import type { ResponsibleGamingService } from "../compliance/responsibleGaming";
+import type { OperatorConfig } from "../compliance/types";
 import {
   parseClientMessage,
   type ClientMessage,
@@ -61,6 +64,14 @@ export interface GatewayOptions {
   audit?: AuditLogger;
   /** Résout le contexte wallet d'un joueur à la connexion (auth/provisionnement). */
   resolveContext?: ResolveContext;
+  /** Service de conformité (geo-gating, limites par juridiction/opérateur). */
+  compliance?: ComplianceService;
+  /** Opérateur courant (périmètre de juridictions, limites par défaut). */
+  operator?: OperatorConfig;
+  /** Résout le pays d'origine de la connexion (en-tête edge). */
+  resolveCountry?: (req: IncomingMessage) => string | null;
+  /** Garde-fous de jeu responsable (optionnel). */
+  responsibleGaming?: ResponsibleGamingService;
 }
 
 export class RealtimeGateway {
@@ -70,12 +81,18 @@ export class RealtimeGateway {
   private readonly wallet?: WalletService;
   private readonly audit?: AuditLogger;
   private readonly resolveContext?: ResolveContext;
+  private readonly compliance?: ComplianceService;
+  private readonly operator?: OperatorConfig;
+  private readonly resolveCountry?: (req: IncomingMessage) => string | null;
+  private readonly responsibleGaming?: ResponsibleGamingService;
   private wss: WebSocketServer | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private unsubscribe: (() => void) | null = null;
   private readonly players = new WeakMap<WebSocket, string>();
   /** Contexte wallet par joueur (persiste le temps de la session). */
   private readonly contexts = new Map<string, WalletContext>();
+  /** Limites par joueur résolues à la connexion (plafond de mise). */
+  private readonly limits = new Map<string, { maxBetCents?: number }>();
 
   constructor(opts: GatewayOptions) {
     this.engine = opts.engine;
@@ -84,6 +101,10 @@ export class RealtimeGateway {
     this.wallet = opts.wallet;
     this.audit = opts.audit;
     this.resolveContext = opts.resolveContext;
+    this.compliance = opts.compliance;
+    this.operator = opts.operator;
+    this.resolveCountry = opts.resolveCountry;
+    this.responsibleGaming = opts.responsibleGaming;
   }
 
   /** Attache la passerelle à un serveur HTTP existant et démarre la boucle. */
@@ -99,6 +120,20 @@ export class RealtimeGateway {
   private async onConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
     const playerId = this.assignPlayerId(req);
     this.players.set(ws, playerId);
+
+    // Geo-gating / conformité (avant tout le reste).
+    if (this.compliance && this.operator) {
+      const country = this.resolveCountry?.(req) ?? null;
+      const decision = this.compliance.evaluateAccess({ operator: this.operator, country });
+      if (!decision.allowed) {
+        if (this.audit) await this.audit.accessDenied(playerId, decision.country, decision.reason);
+        this.send(ws, { t: "error", message: `accès refusé : ${decision.reason}` });
+        ws.close();
+        return;
+      }
+      if (decision.maxBetCents !== undefined) this.limits.set(playerId, { maxBetCents: decision.maxBetCents });
+    }
+
     if (this.resolveContext && !this.contexts.has(playerId)) {
       const ctx = await this.resolveContext(playerId, req);
       if (ctx) this.contexts.set(playerId, ctx);
@@ -157,29 +192,34 @@ export class RealtimeGateway {
   private async settleWallet(s: RoundSettlement): Promise<void> {
     if (!this.wallet) return;
     const report = await this.wallet.settle(s, this.contexts);
-    if (!this.audit) return;
     for (const c of report.credited) {
-      await this.audit.walletMovement({
-        kind: "credit",
-        txId: WalletService.payoutTxId(s.roundId, c.betId),
-        playerId: c.playerId,
-        amountCents: c.amountCents,
-        ok: true,
-        roundId: s.roundId,
-        betId: c.betId,
-      });
+      // Le gain réduit la perte nette de session (jeu responsable).
+      this.responsibleGaming?.recordReturn(c.playerId, c.amountCents);
+      if (this.audit) {
+        await this.audit.walletMovement({
+          kind: "credit",
+          txId: WalletService.payoutTxId(s.roundId, c.betId),
+          playerId: c.playerId,
+          amountCents: c.amountCents,
+          ok: true,
+          roundId: s.roundId,
+          betId: c.betId,
+        });
+      }
     }
-    for (const err of report.errors) {
-      await this.audit.walletMovement({
-        kind: "credit",
-        txId: WalletService.payoutTxId(s.roundId, err.betId),
-        playerId: err.playerId,
-        amountCents: 0,
-        ok: false,
-        code: err.code,
-        roundId: s.roundId,
-        betId: err.betId,
-      });
+    if (this.audit) {
+      for (const err of report.errors) {
+        await this.audit.walletMovement({
+          kind: "credit",
+          txId: WalletService.payoutTxId(s.roundId, err.betId),
+          playerId: err.playerId,
+          amountCents: 0,
+          ok: false,
+          code: err.code,
+          roundId: s.roundId,
+          betId: err.betId,
+        });
+      }
     }
   }
 
@@ -207,6 +247,21 @@ export class RealtimeGateway {
     now: number,
   ): Promise<void> {
     const roundId = this.currentRoundId(now);
+
+    // Plafond de mise (juridiction / opérateur).
+    const limit = this.limits.get(playerId);
+    if (limit?.maxBetCents !== undefined && msg.amountCents > limit.maxBetCents) {
+      if (this.audit) await this.audit.betRejected(roundId, msg.betId, playerId, msg.amountCents, "exceedsMaxBet");
+      return this.send(ws, { t: "bet_ack", betId: msg.betId, ok: false, reason: "exceedsMaxBet" });
+    }
+    // Jeu responsable (auto-exclusion, plafonds de session).
+    if (this.responsibleGaming) {
+      const rg = this.responsibleGaming.canBet(playerId, msg.amountCents);
+      if (!rg.allowed) {
+        if (this.audit) await this.audit.rgBlock(playerId, rg.reason, msg.amountCents);
+        return this.send(ws, { t: "bet_ack", betId: msg.betId, ok: false, reason: rg.reason });
+      }
+    }
 
     if (this.wallet) {
       const ctx = this.contexts.get(playerId);
@@ -250,12 +305,14 @@ export class RealtimeGateway {
         }
         return this.send(ws, { t: "bet_ack", betId: msg.betId, ok: false, reason: r.reason });
       }
+      this.responsibleGaming?.recordBet(playerId, msg.amountCents);
       if (this.audit) await this.audit.betAccepted(roundId, msg.betId, playerId, msg.amountCents);
       return this.send(ws, { t: "bet_ack", betId: msg.betId, ok: true });
     }
 
     // Sans wallet (démo) : le moteur fait foi, audit facultatif.
     const r = this.engine.placeBet({ betId: msg.betId, playerId, amountCents: msg.amountCents }, now);
+    if (r.ok) this.responsibleGaming?.recordBet(playerId, msg.amountCents);
     if (this.audit) {
       if (r.ok) await this.audit.betAccepted(roundId, msg.betId, playerId, msg.amountCents);
       else await this.audit.betRejected(roundId, msg.betId, playerId, msg.amountCents, r.reason);

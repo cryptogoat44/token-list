@@ -22,7 +22,9 @@ export type AuditEventType =
   | "cashout"
   | "crash_revealed"
   | "settlement"
-  | "wallet_movement";
+  | "wallet_movement"
+  | "access_denied"
+  | "rg_block";
 
 /** Un enregistrement scellé du journal. */
 export interface AuditRecord {

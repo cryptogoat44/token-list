@@ -98,6 +98,14 @@ export class AuditLogger {
     });
   }
 
+  accessDenied(playerId: string, country: string | null, reason: string) {
+    return this.store.append("access_denied", { playerId, country: country ?? null, reason });
+  }
+
+  rgBlock(playerId: string, reason: string, amountCents: number) {
+    return this.store.append("rg_block", { playerId, reason, amountCents });
+  }
+
   walletMovement(m: WalletMovementEntry) {
     return this.store.append("wallet_movement", {
       kind: m.kind,

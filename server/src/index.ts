@@ -12,7 +12,7 @@
  *
  * La conformité / geo-gating (étape 6) viendra s'enficher ici.
  */
-import { createServer, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { GameEngine } from "./game/engine";
 import { RealtimeGateway } from "./realtime/gateway";
 import { MemoryAuditStore } from "./audit/memoryAuditStore";
@@ -23,6 +23,10 @@ import type { AuditStore } from "./audit/types";
 import { MockWalletAdapter } from "./wallet/mockWalletAdapter";
 import { WalletService } from "./wallet/walletService";
 import type { WalletContext } from "./wallet/types";
+import { ComplianceService } from "./compliance/complianceService";
+import { ResponsibleGamingService } from "./compliance/responsibleGaming";
+import { countryFromHeaders } from "./compliance/geo";
+import type { OperatorConfig } from "./compliance/types";
 
 const PORT = Number(process.env.PORT ?? 8080);
 /** Solde fictif de départ pour un nouveau joueur de démo (1 000 crédits). */
@@ -51,6 +55,28 @@ const resolveContext = async (playerId: string): Promise<WalletContext | null> =
   const b = await walletAdapter.getBalance(playerId);
   return b.ok ? { playerId, currency: b.currency } : null;
 };
+
+// Conformité : geo-gating + opérateur de démo. France et US sont bloqués par
+// défaut (table des juridictions) ; l'opérateur démo est permissif ailleurs
+// (monnaie fictive).
+const compliance = new ComplianceService();
+const DEMO_OPERATOR: OperatorConfig = {
+  operatorId: "demo",
+  name: "Deep Diver Demo",
+  jurisdictions: [],
+  defaultAllow: true,
+};
+// En production le pays vient de l'edge (Cloudflare…). En local/dev sans en-tête,
+// on retombe sur DEFAULT_COUNTRY (mettre « FR » resterait bloqué de toute façon).
+const DEFAULT_COUNTRY = process.env.DEFAULT_COUNTRY ?? "GB";
+const resolveCountry = (req: IncomingMessage): string | null =>
+  countryFromHeaders(req.headers) ?? DEFAULT_COUNTRY;
+
+// Jeu responsable : rappel (« reality check ») après 20 min. Pas de plafond en
+// démo fictive ; un opérateur réel branche ici ses limites réglementaires.
+const responsibleGaming = new ResponsibleGamingService({
+  limits: { realityCheckMs: 20 * 60 * 1000 },
+});
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "content-type": "application/json" });
@@ -82,13 +108,22 @@ const http = createServer(async (req, res) => {
   res.end("Deep Diver RGS — serveur de jeu (WebSocket). Voir /health, /audit/verify, /audit/replay.");
 });
 
-const gateway = new RealtimeGateway({ engine, wallet, audit, resolveContext });
+const gateway = new RealtimeGateway({
+  engine,
+  wallet,
+  audit,
+  resolveContext,
+  compliance,
+  operator: DEMO_OPERATOR,
+  resolveCountry,
+  responsibleGaming,
+});
 gateway.attach(http);
 
 http.listen(PORT, () => {
   console.log(`[RGS] Deep Diver server à l'écoute sur :${PORT} (HTTP + WebSocket)`);
   console.log(
-    `[RGS] audit: ${process.env.AUDIT_FILE ? `fichier ${process.env.AUDIT_FILE}` : "mémoire"} · wallet: mock (FUN)`,
+    `[RGS] audit: ${process.env.AUDIT_FILE ? `fichier ${process.env.AUDIT_FILE}` : "mémoire"} · wallet: mock (FUN) · geo: défaut ${DEFAULT_COUNTRY} (FR/US bloqués)`,
   );
 });
 

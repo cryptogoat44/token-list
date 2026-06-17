@@ -4,12 +4,13 @@ Serveur **autoritaire** et **certifiable** de Deep Diver. Le client n'est qu'un
 afficheur ; **aucun** résultat, multiplicateur ou point de crash n'est décidé
 côté client.
 
-> État : **étapes 1 → 5** du chantier RGS — cœur **RNG + modèle mathématique
+> État : **étapes 1 → 6** du chantier RGS — cœur **RNG + modèle mathématique
 > audité**, **machine à états du tour**, **passerelle WebSocket** temps réel,
-> **protocole partagé** (client web **bi-mode**), **API wallet seamless** et
-> **journal d'audit infalsifiable** (chaîné par hash, rejouable). Wallet et audit
-> sont **branchés** dans la boucle temps réel. La conformité / geo-gating arrive
-> à l'étape suivante.
+> **protocole partagé** (client web **bi-mode**), **API wallet seamless**,
+> **journal d'audit infalsifiable** (chaîné par hash, rejouable) et **conformité
+> par juridiction / jeu responsable** (geo-gating, **France bloquée par défaut**).
+> Wallet, audit et conformité sont **branchés** dans la boucle temps réel. Restent
+> la simulation à grande échelle et la documentation finale.
 
 ## Modules audités
 
@@ -28,6 +29,8 @@ côté client.
 | `src/audit/hashChain.ts` | Scellage + vérification de la chaîne de hash (SHA-256, sérialisation canonique). |
 | `src/audit/{memory,file}AuditStore.ts` | Journal append-only (mémoire / fichier JSONL), même interface `AuditStore`. |
 | `src/audit/auditLogger.ts` · `auditReplay.ts` | Écriture typée des événements · rejouabilité (équité + arithmétique). |
+| `src/compliance/jurisdictions.ts` · `complianceService.ts` | Geo-gating par juridiction/opérateur (**FR/US bloqués par défaut**). |
+| `src/compliance/responsibleGaming.ts` | Garde-fous : auto-exclusion, plafonds de session, reality check. |
 
 ## RNG & équité
 
@@ -88,6 +91,26 @@ et devient détectable. Événements journalisés : `round_open`, `bet_accepted`
   l'arithmétique des règlements. Un auditeur rejoue tout l'historique.
 - **Endpoints HTTP** : `GET /audit/verify` (intégrité de la chaîne),
   `GET /audit/replay` (équité + règlements), `GET /audit` (fin du journal).
+
+## Conformité & jeu responsable (étape 6)
+
+**Geo-gating par juridiction et opérateur** appliqué à la connexion (le pays
+vient de l'edge/CDN, jamais du client) :
+
+1. pays indéterminé → refus prudent ;
+2. juridiction interdite (**France**, États-Unis par défaut) → refus, même si
+   l'opérateur la liste ;
+3. pays hors périmètre de l'opérateur (`defaultAllow=false`) → refus ;
+4. sinon accès autorisé, avec le **plafond de mise** de la juridiction/opérateur.
+
+Une connexion refusée reçoit une erreur, est **fermée**, et la décision est
+journalisée (`access_denied`).
+
+**Jeu responsable** (protections, jamais d'incitation, sans dark pattern) :
+auto-exclusion (cool-off), plafond de mise et de **perte nette** par session,
+et « reality check » périodique. Une mise bloquée est journalisée (`rg_block`).
+La monnaie restant fictive, la démo n'impose pas de plafond ; un opérateur réel
+branche ses limites réglementaires via la même interface.
 
 ## Protocole partagé & client bi-mode
 
