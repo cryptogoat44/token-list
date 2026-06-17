@@ -4,11 +4,12 @@ Serveur **autoritaire** et **certifiable** de Deep Diver. Le client n'est qu'un
 afficheur ; **aucun** résultat, multiplicateur ou point de crash n'est décidé
 côté client.
 
-> État : **étapes 1 → 4** du chantier RGS — cœur **RNG + modèle mathématique
+> État : **étapes 1 → 5** du chantier RGS — cœur **RNG + modèle mathématique
 > audité**, **machine à états du tour**, **passerelle WebSocket** temps réel,
-> **protocole partagé** (client web **bi-mode**) et **API wallet seamless**
-> (contrat opérateur + mock idempotent). Le journal d'audit et la conformité
-> arrivent aux étapes suivantes.
+> **protocole partagé** (client web **bi-mode**), **API wallet seamless** et
+> **journal d'audit infalsifiable** (chaîné par hash, rejouable). Wallet et audit
+> sont **branchés** dans la boucle temps réel. La conformité / geo-gating arrive
+> à l'étape suivante.
 
 ## Modules audités
 
@@ -24,6 +25,9 @@ côté client.
 | `src/wallet/types.ts` | Contrat **wallet seamless** (authenticate/getBalance/debit/credit/rollback). |
 | `src/wallet/mockWalletAdapter.ts` | Implémentation mémoire idempotente (monnaie fictive, démo/tests). |
 | `src/wallet/walletService.ts` | Traduit mise/encaissement/règlement → appels wallet (txId déterministes). |
+| `src/audit/hashChain.ts` | Scellage + vérification de la chaîne de hash (SHA-256, sérialisation canonique). |
+| `src/audit/{memory,file}AuditStore.ts` | Journal append-only (mémoire / fichier JSONL), même interface `AuditStore`. |
+| `src/audit/auditLogger.ts` · `auditReplay.ts` | Écriture typée des événements · rejouabilité (équité + arithmétique). |
 
 ## RNG & équité
 
@@ -61,10 +65,29 @@ l'argent.
 - **Sécurité argent** : centimes entiers, devise vérifiée à chaque appel, jamais
   de flottant. La démo utilise une devise **fictive** (`FUN`).
 
-**Points d'intégration au temps réel** (orchestration à venir avec l'audit) :
-`debitStake` à l'acceptation d'une mise (refus si fonds insuffisants) →
-`WalletService.settle()` sur l'événement `settled` du moteur pour créditer les
-gagnants (les perdants ne génèrent aucun appel, le débit ayant eu lieu au pari).
+**Branché au temps réel** (passerelle) : à l'acceptation d'une mise →
+`debitStake` (refus si fonds insuffisants ; **rollback** si le moteur refuse
+après débit) ; sur l'événement `settled` du moteur → `WalletService.settle()`
+crédite les gagnants (les perdants ne génèrent aucun appel, le débit ayant eu
+lieu au pari). Chaque mouvement est journalisé dans l'audit.
+
+## Journal d'audit infalsifiable (étape 5)
+
+Registre **append-only** : chaque enregistrement est **chaîné par hash** au
+précédent (`hash = SHA-256(seq, timestamp, type, payload, prevHash)`, payload
+sérialisé de façon **canonique**). Retirer ou modifier une ligne casse la chaîne
+et devient détectable. Événements journalisés : `round_open`, `bet_accepted` /
+`bet_rejected`, `cashout`, `crash_revealed`, `settlement`, `wallet_movement`.
+
+- **Stockage abstrait** (`AuditStore`) : `MemoryAuditStore` (défaut) et
+  `FileAuditStore` (JSONL persistant) aujourd'hui ; un adaptateur **PostgreSQL**
+  se branchera plus tard **sans rien réécrire**. Variable `AUDIT_FILE` pour le
+  mode fichier.
+- **Rejouabilité** (`replayAudit`) : re-dérive chaque tour depuis les graines via
+  le **même vérificateur provably-fair** que le client, et recontrôle
+  l'arithmétique des règlements. Un auditeur rejoue tout l'historique.
+- **Endpoints HTTP** : `GET /audit/verify` (intégrité de la chaîne),
+  `GET /audit/replay` (équité + règlements), `GET /audit` (fin du journal).
 
 ## Protocole partagé & client bi-mode
 

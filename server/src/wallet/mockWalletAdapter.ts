@@ -64,6 +64,13 @@ export class MockWalletAdapter implements WalletAdapter {
     for (const tok of tokens) this.tokens.set(tok, playerId);
   }
 
+  /** Crée un compte UNIQUEMENT s'il n'existe pas (ne réinitialise jamais un solde). */
+  ensureAccount(playerId: string, balanceCents: number, currency?: Currency): void {
+    if (!this.accounts.has(playerId)) {
+      this.accounts.set(playerId, { balanceCents, currency: currency ?? this.defaultCurrency });
+    }
+  }
+
   async authenticate(token: string): Promise<AuthResult> {
     const playerId = this.tokens.get(token);
     if (!playerId) return { ok: false, code: "INVALID_TOKEN", message: "jeton inconnu" };
