@@ -4,13 +4,13 @@ Serveur **autoritaire** et **certifiable** de Deep Diver. Le client n'est qu'un
 afficheur ; **aucun** résultat, multiplicateur ou point de crash n'est décidé
 côté client.
 
-> État : **étapes 1 → 6** du chantier RGS — cœur **RNG + modèle mathématique
+> État : **étapes 1 → 7** du chantier RGS — cœur **RNG + modèle mathématique
 > audité**, **machine à états du tour**, **passerelle WebSocket** temps réel,
 > **protocole partagé** (client web **bi-mode**), **API wallet seamless**,
-> **journal d'audit infalsifiable** (chaîné par hash, rejouable) et **conformité
-> par juridiction / jeu responsable** (geo-gating, **France bloquée par défaut**).
-> Wallet, audit et conformité sont **branchés** dans la boucle temps réel. Restent
-> la simulation à grande échelle et la documentation finale.
+> **journal d'audit infalsifiable** (chaîné par hash, rejouable), **conformité
+> par juridiction / jeu responsable** (geo-gating, **France bloquée par défaut**)
+> et **banc de simulation** (rapport du modèle mathématique sur 1 M de tours).
+> Reste la documentation finale (dossier de certification).
 
 ## Modules audités
 
@@ -31,6 +31,7 @@ côté client.
 | `src/audit/auditLogger.ts` · `auditReplay.ts` | Écriture typée des événements · rejouabilité (équité + arithmétique). |
 | `src/compliance/jurisdictions.ts` · `complianceService.ts` | Geo-gating par juridiction/opérateur (**FR/US bloqués par défaut**). |
 | `src/compliance/responsibleGaming.ts` | Garde-fous : auto-exclusion, plafonds de session, reality check. |
+| `src/sim/simulate.ts` · `report.ts` · `run.ts` | Banc de simulation (N tours) + rapport Markdown du modèle mathématique. |
 
 ## RNG & équité
 
@@ -91,6 +92,22 @@ et devient détectable. Événements journalisés : `round_open`, `bet_accepted`
   l'arithmétique des règlements. Un auditeur rejoue tout l'historique.
 - **Endpoints HTTP** : `GET /audit/verify` (intégrité de la chaîne),
   `GET /audit/replay` (équité + règlements), `GET /audit` (fin du journal).
+
+## Simulation & modèle mathématique (étape 7)
+
+Banc de simulation qui tire N tours via la **même dérivation provably-fair** que
+la production et agrège les statistiques de conformité (taux de crash instantané,
+`P(crash ≥ m)` vs théorie, RTP implicite, quantiles, distribution).
+
+```bash
+npm run sim                              # 1 000 000 tours, graine déterministe → stdout
+SIM_OUT=docs/math-model.md npm run sim   # écrit aussi le rapport Markdown
+ROUNDS=5000000 npm run sim               # échantillon plus large
+```
+
+Rapport de référence (reproductible, graine `deep-diver-sim`) : **`docs/math-model.md`**.
+Sur 1 M de tours, le RTP implicite reste à **~97 %** de 1,5x à 1000x et le crash
+instantané ≈ **3,96 %** — conforme à `P(crash ≥ m) = (1 − edge)/m`.
 
 ## Conformité & jeu responsable (étape 6)
 
